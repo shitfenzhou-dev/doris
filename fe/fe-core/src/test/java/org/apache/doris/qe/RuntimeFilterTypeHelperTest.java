@@ -57,6 +57,65 @@ public class RuntimeFilterTypeHelperTest {
         Assert.assertEquals("IN", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
     }
 
+    @Test
+    public void testCaseInsensitive() throws DdlException {
+        String runtimeFilterType = "in";
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "bloom_filter";
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "min_max";
+        Assert.assertEquals(new Long(4L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+    }
+
+    @Test
+    public void testNumericValue() throws DdlException {
+        String runtimeFilterType = "1"; // IN
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "2"; // BLOOM_FILTER
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "1,4"; // IN, MIN_MAX
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+    }
+
+    @Test
+    public void testSupportedType() {
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BLOOM_FILTER"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("MIN_MAX"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN_OR_BLOOM_FILTER"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BITMAP_FILTER"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue("INVALID_TYPE"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue(null));
+    }
+
+    @Test
+    public void testAllowedRuntimeFilterType() {
+        long value = 1L; // IN
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(value, org.apache.doris.thrift.TRuntimeFilterType.IN));
+        Assert.assertFalse(RuntimeFilterTypeHelper.allowedRuntimeFilterType(value, org.apache.doris.thrift.TRuntimeFilterType.BLOOM));
+
+        value = 12L; // MIN_MAX (4) + IN_OR_BLOOM (8)
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(value, org.apache.doris.thrift.TRuntimeFilterType.MIN_MAX));
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(value, org.apache.doris.thrift.TRuntimeFilterType.IN_OR_BLOOM));
+    }
+
+    @Test
+    public void testDecodeMultiple() throws DdlException {
+        long value = 6L; // MIN_MAX (4) + BLOOM_FILTER (2)
+        String decoded = RuntimeFilterTypeHelper.decode(value);
+        Assert.assertTrue(decoded.contains("MIN_MAX"));
+        Assert.assertTrue(decoded.contains("BLOOM_FILTER"));
+
+        value = 12L; // MIN_MAX (4) + IN_OR_BLOOM_FILTER (8)
+        decoded = RuntimeFilterTypeHelper.decode(value);
+        Assert.assertTrue(decoded.contains("MIN_MAX"));
+        Assert.assertTrue(decoded.contains("IN_OR_BLOOM_FILTER"));
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         RuntimeFilterTypeHelper.encode("BLOOM,IN");
@@ -84,6 +143,26 @@ public class RuntimeFilterTypeHelperTest {
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode4() throws DdlException {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidTypeName() throws DdlException {
+        RuntimeFilterTypeHelper.encode("INVALID_TYPE");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidLargeMask() throws DdlException {
+        // This should fail because it's beyond allowed mask
+        RuntimeFilterTypeHelper.decode(1L << 10);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidLargeNumericValue() throws DdlException {
+        // This should fail because it's beyond allowed mask
+        RuntimeFilterTypeHelper.encode(String.valueOf(1L << 10));
         Assert.fail("No exception throws");
     }
 }

@@ -73,7 +73,6 @@ public class SqlModeHelper {
     public static final long MODE_LAST = 1L << 33;
     public static final long MODE_REAL_AS_FLOAT = 1L << 34;
 
-
     public static final long MODE_ALLOWED_MASK =
             (MODE_REAL_AS_FLOAT | MODE_PIPES_AS_CONCAT | MODE_ANSI_QUOTES | MODE_IGNORE_SPACE | MODE_NOT_USED
                     | MODE_ONLY_FULL_GROUP_BY | MODE_NO_UNSIGNED_SUBTRACTION | MODE_NO_DIR_IN_CREATE
@@ -88,6 +87,70 @@ public class SqlModeHelper {
     private static final Map<String, Long> sqlModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
 
     private static final Map<String, Long> combineModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
+
+    private static class InnerConverter extends AbstractFlagConverter {
+        InnerConverter() {
+            super(SessionVariable.SQL_MODE, MODE_ALLOWED_MASK, sqlModeSet);
+        }
+
+        @Override
+        public String decode(Long sqlMode) throws DdlException {
+            if (sqlMode == MODE_DEFAULT) {
+                // For compatibility with older versions, return empty string
+                return "";
+            }
+            return super.decode(sqlMode);
+        }
+
+        @Override
+        public Long encode(String sqlMode) throws DdlException {
+            List<String> names =
+                    Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
+
+            // empty string parse to 0
+            long resultCode = 0L;
+            for (String key : names) {
+                long code = 0L;
+                if (StringUtils.isNumeric(key)) {
+                    code |= expand(Long.valueOf(key));
+                } else {
+                    code = getCodeFromString(key);
+                    if (code == 0) {
+                        ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+                    }
+                }
+                resultCode |= code;
+                if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+                }
+            }
+            return resultCode;
+        }
+
+        @Override
+        protected long expand(long sqlMode) throws DdlException {
+            for (String key : getCombineMode().keySet()) {
+                if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
+                    sqlMode |= getCombineMode().get(key);
+                }
+            }
+            return sqlMode;
+        }
+
+        @Override
+        protected long getCodeFromString(String sqlMode) {
+            long code = 0L;
+            if (isSupported(sqlMode)) {
+                if (isCombineMode(sqlMode)) {
+                    code |= getCombineMode().get(sqlMode);
+                }
+                code |= getSupportedSqlMode().get(sqlMode);
+            }
+            return code;
+        }
+    }
+
+    private static final InnerConverter CONVERTER = new InnerConverter();
 
     static {
         sqlModeSet.put("DEFAULT", MODE_DEFAULT);
@@ -123,77 +186,22 @@ public class SqlModeHelper {
 
     // convert long type SQL MODE to string type that user can read
     public static String decode(Long sqlMode) throws DdlException {
-        if (sqlMode == MODE_DEFAULT) {
-            //For compatibility with older versions， return empty string
-            return "";
-        }
-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
-        }
-
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
-            if ((sqlMode & mode.getValue()) != 0) {
-                names.add(mode.getKey());
-            }
-        }
-
-        return Joiner.on(',').join(names);
+        return CONVERTER.decode(sqlMode);
     }
 
     // convert string type SQL MODE to long type that session can store
     public static Long encode(String sqlMode) throws DdlException {
-        List<String> names =
-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
-
-        // empty string parse to 0
-        long resultCode = 0L;
-        for (String key : names) {
-            long code = 0L;
-            if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
-            } else {
-                code = getCodeFromString(key);
-                if (code == 0) {
-                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-                }
-            }
-            resultCode |= code;
-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-            }
-        }
-        return resultCode;
+        return CONVERTER.encode(sqlMode);
     }
 
     // expand the combine mode if exists
     public static long expand(long sqlMode) throws DdlException {
-        for (String key : getCombineMode().keySet()) {
-            if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
-                sqlMode |= getCombineMode().get(key);
-            }
-        }
-        return sqlMode;
+        return CONVERTER.expand(sqlMode);
     }
 
     // check if this SQL MODE is supported
     public static boolean isSupportedSqlMode(String sqlMode) {
-        if (sqlMode == null || !getSupportedSqlMode().containsKey(sqlMode)) {
-            return false;
-        }
-        return true;
-    }
-
-    // encode sqlMode from string to long
-    private static long getCodeFromString(String sqlMode) {
-        long code = 0L;
-        if (isSupportedSqlMode(sqlMode)) {
-            if (isCombineMode(sqlMode)) {
-                code |= getCombineMode().get(sqlMode);
-            }
-            code |= getSupportedSqlMode().get(sqlMode);
-        }
-        return code;
+        return CONVERTER.isSupported(sqlMode);
     }
 
     // check if this SQL MODE is combine mode

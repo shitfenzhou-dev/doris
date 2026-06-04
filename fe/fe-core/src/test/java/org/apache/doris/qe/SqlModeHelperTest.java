@@ -42,6 +42,74 @@ public class SqlModeHelperTest {
         Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
     }
 
+    @Test
+    public void testCaseInsensitive() throws DdlException {
+        String sqlMode = "pipes_as_concat";
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
+
+        sqlMode = "ANSI";
+        long expected = SqlModeHelper.MODE_ANSI | SqlModeHelper.MODE_REAL_AS_FLOAT 
+                | SqlModeHelper.MODE_PIPES_AS_CONCAT | SqlModeHelper.MODE_ANSI_QUOTES 
+                | SqlModeHelper.MODE_IGNORE_SPACE | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY;
+        Assert.assertEquals(new Long(expected), SqlModeHelper.encode(sqlMode));
+    }
+
+    @Test
+    public void testCombineMode() throws DdlException {
+        String sqlMode = "ANSI";
+        long expected = SqlModeHelper.MODE_ANSI | SqlModeHelper.MODE_REAL_AS_FLOAT 
+                | SqlModeHelper.MODE_PIPES_AS_CONCAT | SqlModeHelper.MODE_ANSI_QUOTES 
+                | SqlModeHelper.MODE_IGNORE_SPACE | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY;
+        Assert.assertEquals(new Long(expected), SqlModeHelper.encode(sqlMode));
+
+        sqlMode = "TRADITIONAL";
+        expected = SqlModeHelper.MODE_TRADITIONAL | SqlModeHelper.MODE_STRICT_TRANS_TABLES 
+                | SqlModeHelper.MODE_STRICT_ALL_TABLES | SqlModeHelper.MODE_NO_ZERO_IN_DATE 
+                | SqlModeHelper.MODE_NO_ZERO_DATE | SqlModeHelper.MODE_ERROR_FOR_DIVISION_BY_ZERO 
+                | SqlModeHelper.MODE_NO_ENGINE_SUBSTITUTION;
+        Assert.assertEquals(new Long(expected), SqlModeHelper.encode(sqlMode));
+
+        long expanded = SqlModeHelper.expand(SqlModeHelper.MODE_ANSI);
+        Assert.assertEquals(expected, SqlModeHelper.encode("ANSI"));
+    }
+
+    @Test
+    public void testMultipleModes() throws DdlException {
+        String sqlMode = "PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE";
+        long expected = SqlModeHelper.MODE_PIPES_AS_CONCAT | SqlModeHelper.MODE_ANSI_QUOTES | SqlModeHelper.MODE_IGNORE_SPACE;
+        Assert.assertEquals(new Long(expected), SqlModeHelper.encode(sqlMode));
+
+        String decoded = SqlModeHelper.decode(expected);
+        Assert.assertTrue(decoded.contains("PIPES_AS_CONCAT"));
+        Assert.assertTrue(decoded.contains("ANSI_QUOTES"));
+        Assert.assertTrue(decoded.contains("IGNORE_SPACE"));
+    }
+
+    @Test
+    public void testNumericValue() throws DdlException {
+        String sqlMode = "2"; // PIPES_AS_CONCAT
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
+
+        sqlMode = "1,2,4"; // DEFAULT, PIPES_AS_CONCAT, ANSI_QUOTES
+        long expected = SqlModeHelper.MODE_DEFAULT | SqlModeHelper.MODE_PIPES_AS_CONCAT | SqlModeHelper.MODE_ANSI_QUOTES;
+        Assert.assertEquals(new Long(expected), SqlModeHelper.encode(sqlMode));
+    }
+
+    @Test
+    public void testSupportedMode() {
+        Assert.assertTrue(SqlModeHelper.isSupportedSqlMode("PIPES_AS_CONCAT"));
+        Assert.assertTrue(SqlModeHelper.isSupportedSqlMode("ANSI"));
+        Assert.assertFalse(SqlModeHelper.isSupportedSqlMode("INVALID_MODE"));
+        Assert.assertFalse(SqlModeHelper.isSupportedSqlMode(null));
+    }
+
+    @Test
+    public void testCombineModeCheck() {
+        Assert.assertTrue(SqlModeHelper.isCombineMode("ANSI"));
+        Assert.assertTrue(SqlModeHelper.isCombineMode("TRADITIONAL"));
+        Assert.assertFalse(SqlModeHelper.isCombineMode("PIPES_AS_CONCAT"));
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
@@ -53,6 +121,14 @@ public class SqlModeHelperTest {
     public void testInvalidDecode() throws DdlException {
         long sqlMode = SqlModeHelper.MODE_LAST;
         SqlModeHelper.decode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        // This should fail because 1L << 40 is beyond allowed mask
+        String sqlMode = String.valueOf(1L << 40);
+        SqlModeHelper.encode(sqlMode);
         Assert.fail("No exception throws");
     }
 }
