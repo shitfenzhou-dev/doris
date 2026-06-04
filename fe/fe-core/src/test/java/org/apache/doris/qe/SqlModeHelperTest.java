@@ -55,4 +55,31 @@ public class SqlModeHelperTest {
         SqlModeHelper.decode(sqlMode);
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testNumericOverflow() throws DdlException {
+        String sqlMode = "99999999999999999999";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNumericNotInAllowedMask() throws DdlException {
+        String sqlMode = "131072";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testValidNumeric() throws DdlException {
+        String sqlMode = "2";
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumeric() throws DdlException {
+        String sqlMode = "-1";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
 }

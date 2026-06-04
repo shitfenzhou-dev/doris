@@ -86,4 +86,28 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testNumericOverflow() throws DdlException {
+        RuntimeFilterTypeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNumericNotInAllowedMask() throws DdlException {
+        RuntimeFilterTypeHelper.encode("32");
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testValidNumeric() throws DdlException {
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
+        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("6"));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumeric() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-1");
+        Assert.fail("No exception throws");
+    }
 }

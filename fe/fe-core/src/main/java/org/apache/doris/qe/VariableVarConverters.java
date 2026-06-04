@@ -123,7 +123,12 @@ public class VariableVarConverters {
         @Override
         public Long encode(String value) throws DdlException {
             if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+                long val;
+                try {
+                    val = Long.parseLong(value);
+                } catch (NumberFormatException e) {
+                    throw new DdlException("Invalid validate_password_policy value: " + value);
+                }
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);

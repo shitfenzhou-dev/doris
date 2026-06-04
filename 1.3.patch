@@ -1,0 +1,122 @@
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+index 4ce4dc68ff..e6d36e0ea8 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+@@ -89,7 +89,12 @@ public class RuntimeFilterTypeHelper {
+         for (String key : names) {
+             long code = 0;
+             if (StringUtils.isNumeric(key)) {
+-                code |= Long.parseLong(key);
++                try {
++                    code |= Long.parseLong(key);
++                } catch (NumberFormatException e) {
++                    ErrorReport.reportDdlException(
++                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
++                }
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+index 2b66297333..1bc40465ec 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+@@ -151,7 +151,11 @@ public class SqlModeHelper {
+         for (String key : names) {
+             long code = 0L;
+             if (StringUtils.isNumeric(key)) {
+-                code |= expand(Long.valueOf(key));
++                try {
++                    code |= expand(Long.parseLong(key));
++                } catch (NumberFormatException e) {
++                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
++                }
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+index 789e9933da..36b0936e70 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+@@ -123,7 +123,12 @@ public class VariableVarConverters {
+         @Override
+         public Long encode(String value) throws DdlException {
+             if (StringUtils.isNumeric(value)) {
+-                long val = Long.valueOf(value);
++                long val;
++                try {
++                    val = Long.parseLong(value);
++                } catch (NumberFormatException e) {
++                    throw new DdlException("Invalid validate_password_policy value: " + value);
++                }
+                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
+                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
+                     throw new DdlException("Invalid validate_password_policy value: " + value);
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+index 4adb83ce6d..30cec777d6 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+@@ -86,4 +86,28 @@ public class RuntimeFilterTypeHelperTest {
+         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testNumericOverflow() throws DdlException {
++        RuntimeFilterTypeHelper.encode("99999999999999999999");
++        Assert.fail("No exception throws");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNumericNotInAllowedMask() throws DdlException {
++        RuntimeFilterTypeHelper.encode("32");
++        Assert.fail("No exception throws");
++    }
++
++    @Test
++    public void testValidNumeric() throws DdlException {
++        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
++        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("6"));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumeric() throws DdlException {
++        RuntimeFilterTypeHelper.encode("-1");
++        Assert.fail("No exception throws");
++    }
+ }
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+index 96b9713844..056b8d7adf 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+@@ -55,4 +55,31 @@ public class SqlModeHelperTest {
+         SqlModeHelper.decode(sqlMode);
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testNumericOverflow() throws DdlException {
++        String sqlMode = "99999999999999999999";
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNumericNotInAllowedMask() throws DdlException {
++        String sqlMode = "131072";
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws");
++    }
++
++    @Test
++    public void testValidNumeric() throws DdlException {
++        String sqlMode = "2";
++        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumeric() throws DdlException {
++        String sqlMode = "-1";
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws");
++    }
+ }
