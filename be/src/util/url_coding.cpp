@@ -53,6 +53,22 @@ void url_encode(const std::string_view& in, std::string* out) {
 // http://www.boost.org/doc/libs/1_40_0/doc/html/boost_asio/
 //   example/http/server3/request_handler.cpp
 // See http://www.boost.org/LICENSE_1_0.txt for license for this method.
+inline bool is_hex_char(char c) {
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+
+inline unsigned char hex_char_to_value(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    } else if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+    } else { // 'A' - 'F'
+        return 10 + (c - 'A');
+    }
+}
+
 bool url_decode(const std::string& in, std::string* out) {
     out->clear();
     out->reserve(in.size());
@@ -60,15 +76,14 @@ bool url_decode(const std::string& in, std::string* out) {
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] == '%') {
             if (i + 3 <= in.size()) {
-                int value = 0;
-                std::istringstream is(in.substr(i + 1, 2));
-
-                if (is >> std::hex >> value) {
-                    (*out) += static_cast<char>(value);
-                    i += 2;
-                } else {
+                char c1 = in[i + 1];
+                char c2 = in[i + 2];
+                if (!is_hex_char(c1) || !is_hex_char(c2)) {
                     return false;
                 }
+                unsigned char value = (hex_char_to_value(c1) << 4) | hex_char_to_value(c2);
+                (*out) += static_cast<char>(value);
+                i += 2;
             } else {
                 return false;
             }

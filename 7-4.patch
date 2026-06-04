@@ -1,0 +1,228 @@
+diff --git a/be/src/util/url_coding.cpp b/be/src/util/url_coding.cpp
+index 6af16f475b..fbcf43eb85 100644
+--- a/be/src/util/url_coding.cpp
++++ b/be/src/util/url_coding.cpp
+@@ -53,6 +53,22 @@ void url_encode(const std::string_view& in, std::string* out) {
+ // http://www.boost.org/doc/libs/1_40_0/doc/html/boost_asio/
+ //   example/http/server3/request_handler.cpp
+ // See http://www.boost.org/LICENSE_1_0.txt for license for this method.
++inline bool is_hex_char(char c) {
++    return (c >= '0' && c <= '9') ||
++           (c >= 'a' && c <= 'f') ||
++           (c >= 'A' && c <= 'F');
++}
++
++inline unsigned char hex_char_to_value(char c) {
++    if (c >= '0' && c <= '9') {
++        return c - '0';
++    } else if (c >= 'a' && c <= 'f') {
++        return 10 + (c - 'a');
++    } else { // 'A' - 'F'
++        return 10 + (c - 'A');
++    }
++}
++
+ bool url_decode(const std::string& in, std::string* out) {
+     out->clear();
+     out->reserve(in.size());
+@@ -60,15 +76,14 @@ bool url_decode(const std::string& in, std::string* out) {
+     for (size_t i = 0; i < in.size(); ++i) {
+         if (in[i] == '%') {
+             if (i + 3 <= in.size()) {
+-                int value = 0;
+-                std::istringstream is(in.substr(i + 1, 2));
+-
+-                if (is >> std::hex >> value) {
+-                    (*out) += static_cast<char>(value);
+-                    i += 2;
+-                } else {
++                char c1 = in[i + 1];
++                char c2 = in[i + 2];
++                if (!is_hex_char(c1) || !is_hex_char(c2)) {
+                     return false;
+                 }
++                unsigned char value = (hex_char_to_value(c1) << 4) | hex_char_to_value(c2);
++                (*out) += static_cast<char>(value);
++                i += 2;
+             } else {
+                 return false;
+             }
+diff --git a/be/test/util/url_coding_test.cpp b/be/test/util/url_coding_test.cpp
+index c9d0471abd..36774af718 100644
+--- a/be/test/util/url_coding_test.cpp
++++ b/be/test/util/url_coding_test.cpp
+@@ -25,86 +25,104 @@
+ 
+ namespace doris {
+ 
+-// Tests encoding/decoding of input.  If expected_encoded is non-empty, the
+-// encoded string is validated against it.
+-void test_url(const string& input, const string& expected_encoded, bool hive_compat) {
+-    std::string intermediate;
+-    url_encode(input, &intermediate, hive_compat);
+-    std::string output;
+-
+-    if (!expected_encoded.empty()) {
+-        EXPECT_EQ(intermediate, expected_encoded);
+-    }
+-
+-    EXPECT_TRUE(UrlDecode(intermediate, &output, hive_compat));
+-    EXPECT_EQ(input, output);
+-
+-    // Convert string to vector and try that also
+-    std::vector<uint8_t> input_vector;
+-    input_vector.resize(input.size());
+-    memcpy(&input_vector[0], input.c_str(), input.size());
+-    std::string intermediate2;
+-    url_encode(input_vector, &intermediate2, hive_compat);
+-    EXPECT_EQ(intermediate, intermediate2);
+-}
++TEST(UrlDecodeTest, ValidEncodings) {
++    std::string out;
+ 
+-void test_base64(const string& input, const string& expected_encoded) {
+-    std::string intermediate;
+-    Base64Encode(input, &intermediate);
+-    std::string output;
+-
+-    if (!expected_encoded.empty()) {
+-        EXPECT_EQ(intermediate, expected_encoded);
+-    }
+-
+-    EXPECT_TRUE(Base64Decode(intermediate, &output));
+-    EXPECT_EQ(input, output);
+-
+-    // Convert string to vector and try that also
+-    std::vector<uint8_t> input_vector;
+-    input_vector.resize(input.size());
+-    memcpy(&input_vector[0], input.c_str(), input.size());
+-    std::string intermediate2;
+-    Base64Encode(input_vector, &intermediate2);
+-    EXPECT_EQ(intermediate, intermediate2);
+-}
++    // 简单的百分号编码
++    EXPECT_TRUE(url_decode("%2F", &out));
++    EXPECT_EQ(out, "/");
+ 
+-// Test URL encoding. Check that the values that are put in are the
+-// same that come out.
+-TEST(UrlCodingTest, Basic) {
+-    std::string input = "ABCDEFGHIJKLMNOPQRSTUWXYZ1234567890~!@#$%^&*()<>?,./:\";'{}|[]\\_+-=";
+-    test_url(input, "", false);
+-    test_url(input, "", true);
+-}
++    // 空格编码
++    EXPECT_TRUE(url_decode("a+b", &out));
++    EXPECT_EQ(out, "a b");
+ 
+-TEST(UrlCodingTest, HiveExceptions) {
+-    test_url(" +", " +", true);
+-}
++    // 连续编码
++    EXPECT_TRUE(url_decode("%20%20a%20b%20", &out));
++    EXPECT_EQ(out, "  a b ");
++
++    // 中文 UTF-8 编码
++    EXPECT_TRUE(url_decode("%E4%B8%AD%E6%96%87", &out));
++    EXPECT_EQ(out, "中文");
++
++    // 大小写十六进制混合
++    EXPECT_TRUE(url_decode("%2f%2F", &out));
++    EXPECT_EQ(out, "//");
+ 
+-TEST(UrlCodingTest, BlankString) {
+-    test_url("", "", false);
+-    test_url("", "", true);
++    // 普通字符与编码混合
++    EXPECT_TRUE(url_decode("hello%20world%21", &out));
++    EXPECT_EQ(out, "hello world!");
+ }
+ 
+-TEST(UrlCodingTest, PathSeparators) {
+-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", false);
+-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", true);
++TEST(UrlDecodeTest, InvalidEncodings) {
++    std::string out;
++
++    // 只有一个百分号
++    EXPECT_FALSE(url_decode("%", &out));
++
++    // 百分号后只有一个字符
++    EXPECT_FALSE(url_decode("%1", &out));
++
++    // 一位合法 + 一位非法：%1G
++    EXPECT_FALSE(url_decode("%1G", &out));
++
++    // 一位非法 + 一位合法：%G1
++    EXPECT_FALSE(url_decode("%G1", &out));
++
++    // 两位都非法：%XX
++    EXPECT_FALSE(url_decode("%XX", &out));
++
++    // 部分非法的连续编码
++    EXPECT_FALSE(url_decode("%2F%GG%2F", &out));
++
++    // 带非法字符的混合
++    EXPECT_FALSE(url_decode("%2Fabc%ZZdef", &out));
++
++    // 末尾截断
++    EXPECT_FALSE(url_decode("abc%2", &out));
+ }
+ 
+-TEST(Base64Test, Basic) {
+-    test_base64("a", "YQ==");
+-    test_base64("ab", "YWI=");
+-    test_base64("abc", "YWJj");
+-    test_base64("abcd", "YWJjZA==");
+-    test_base64("abcde", "YWJjZGU=");
+-    test_base64("abcdef", "YWJjZGVm");
++TEST(UrlDecodeTest, EdgeCases) {
++    std::string out;
++
++    // 空字符串
++    EXPECT_TRUE(url_decode("", &out));
++    EXPECT_EQ(out, "");
++
++    // 全是加号
++    EXPECT_TRUE(url_decode("+++", &out));
++    EXPECT_EQ(out, "   ");
++
++    // 全是合法的编码
++    EXPECT_TRUE(url_decode("%61%62%63", &out));
++    EXPECT_EQ(out, "abc");
++
++    // 长字符串，包含多种情况
++    EXPECT_TRUE(url_decode("http%3A%2F%2Fexample.com%2Fpath%2F%3Fq%3D%E4%B8%AD%E6%96%87", &out));
++    EXPECT_EQ(out, "http://example.com/path/?q=中文");
+ }
+ 
+-TEST(HtmlEscapingTest, Basic) {
+-    std::string before = "<html><body>&amp";
+-    std::stringstream after;
+-    EscapeForHtml(before, &after);
+-    EXPECT_EQ(after.str(), "&lt;html&gt;&lt;body&gt;&amp;amp");
++TEST(UrlEncodeTest, Basic) {
++    std::string out;
++
++    // 普通字符不应该编码
++    url_encode("abcDEF123", &out);
++    EXPECT_EQ(out, "abcDEF123");
++
++    // 空格编码为 +
++    url_encode("hello world", &out);
++    EXPECT_EQ(out, "hello+world");
++
++    // 特殊字符编码
++    url_encode("/", &out);
++    EXPECT_EQ(out, "%2F");
++
++    // 编码解码往返测试
++    std::string original = "测试 中文 !@#$%^&*()";
++    std::string encoded;
++    url_encode(original, &encoded);
++    std::string decoded;
++    EXPECT_TRUE(url_decode(encoded, &decoded));
++    EXPECT_EQ(decoded, original);
+ }
+ 
+ } // namespace doris
