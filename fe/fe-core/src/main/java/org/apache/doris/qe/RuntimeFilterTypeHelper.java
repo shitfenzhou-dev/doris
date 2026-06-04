@@ -89,7 +89,7 @@ public class RuntimeFilterTypeHelper {
         for (String key : names) {
             long code = 0;
             if (StringUtils.isNumeric(key)) {
-                code |= Long.parseLong(key);
+                code |= safeParseLong(key, SessionVariable.RUNTIME_FILTER_TYPE);
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {
@@ -118,6 +118,19 @@ public class RuntimeFilterTypeHelper {
             ErrorReport.reportDdlException("IN, BLOOM, IN_OR_BLOOM can not be enabled at the same time");
         }
         return resultCode;
+    }
+
+    private static long safeParseLong(String key, String varName) throws DdlException {
+        try {
+            long value = Long.parseLong(key);
+            if (value < 0) {
+                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+            return 0L; // unreachable
+        }
     }
 
     // check if this variable value is supported

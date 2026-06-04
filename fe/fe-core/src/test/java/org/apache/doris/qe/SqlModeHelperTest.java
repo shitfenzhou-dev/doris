@@ -55,4 +55,35 @@ public class SqlModeHelperTest {
         SqlModeHelper.decode(sqlMode);
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testLargeNumber() throws DdlException {
+        // Test a number larger than Long.MAX_VALUE
+        SqlModeHelper.encode("9223372036854775808");
+        Assert.fail("No exception throws for large number");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumber() throws DdlException {
+        SqlModeHelper.encode("-123");
+        Assert.fail("No exception throws for negative number");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskNumber() throws DdlException {
+        SqlModeHelper.encode("9999999999");
+        Assert.fail("No exception throws for invalid mask number");
+    }
+
+    @Test
+    public void testValidNumber() throws DdlException {
+        SqlModeHelper.encode("7");
+        Assert.assertTrue(true);
+    }
+
+    @Test
+    public void testConverter() throws DdlException {
+        Long val = VariableVarConverters.encode(SessionVariable.SQL_MODE, "PIPES_AS_CONCAT");
+        Assert.assertEquals(new Long(2L), val);
+    }
 }

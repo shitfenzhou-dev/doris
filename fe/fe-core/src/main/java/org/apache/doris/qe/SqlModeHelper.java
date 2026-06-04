@@ -151,7 +151,7 @@ public class SqlModeHelper {
         for (String key : names) {
             long code = 0L;
             if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
+                code |= expand(safeParseLong(key, SessionVariable.SQL_MODE));
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {
@@ -164,6 +164,19 @@ public class SqlModeHelper {
             }
         }
         return resultCode;
+    }
+
+    private static long safeParseLong(String key, String varName) throws DdlException {
+        try {
+            long value = Long.parseLong(key);
+            if (value < 0) {
+                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+            return 0L; // unreachable
+        }
     }
 
     // expand the combine mode if exists
