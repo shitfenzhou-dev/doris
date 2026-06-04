@@ -1,0 +1,123 @@
+diff --git a/be/test/util/url_coding_test.cpp b/be/test/util/url_coding_test.cpp
+index c9d0471abd..3c578675a1 100644
+--- a/be/test/util/url_coding_test.cpp
++++ b/be/test/util/url_coding_test.cpp
+@@ -21,22 +21,23 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#include <cmath>
+ #include <iostream>
+ 
+ namespace doris {
+ 
+ // Tests encoding/decoding of input.  If expected_encoded is non-empty, the
+ // encoded string is validated against it.
+-void test_url(const string& input, const string& expected_encoded, bool hive_compat) {
++void test_url(const string& input, const string& expected_encoded) {
+     std::string intermediate;
+-    url_encode(input, &intermediate, hive_compat);
++    url_encode(input, &intermediate);
+     std::string output;
+ 
+     if (!expected_encoded.empty()) {
+         EXPECT_EQ(intermediate, expected_encoded);
+     }
+ 
+-    EXPECT_TRUE(UrlDecode(intermediate, &output, hive_compat));
++    EXPECT_TRUE(url_decode(intermediate, &output));
+     EXPECT_EQ(input, output);
+ 
+     // Convert string to vector and try that also
+@@ -44,20 +45,21 @@ void test_url(const string& input, const string& expected_encoded, bool hive_com
+     input_vector.resize(input.size());
+     memcpy(&input_vector[0], input.c_str(), input.size());
+     std::string intermediate2;
+-    url_encode(input_vector, &intermediate2, hive_compat);
++    std::string_view input_view(reinterpret_cast<const char*>(input_vector.data()), input_vector.size());
++    url_encode(input_view, &intermediate2);
+     EXPECT_EQ(intermediate, intermediate2);
+ }
+ 
+ void test_base64(const string& input, const string& expected_encoded) {
+     std::string intermediate;
+-    Base64Encode(input, &intermediate);
++    base64_encode(input, &intermediate);
+     std::string output;
+ 
+     if (!expected_encoded.empty()) {
+         EXPECT_EQ(intermediate, expected_encoded);
+     }
+ 
+-    EXPECT_TRUE(Base64Decode(intermediate, &output));
++    EXPECT_TRUE(base64_decode(intermediate, &output));
+     EXPECT_EQ(input, output);
+ 
+     // Convert string to vector and try that also
+@@ -65,7 +67,9 @@ void test_base64(const string& input, const string& expected_encoded) {
+     input_vector.resize(input.size());
+     memcpy(&input_vector[0], input.c_str(), input.size());
+     std::string intermediate2;
+-    Base64Encode(input_vector, &intermediate2);
++    intermediate2.resize((size_t)(4.0 * std::ceil(input_vector.size() / 3.0)) + 4);
++    size_t len = base64_encode(input_vector.data(), input_vector.size(), (unsigned char*)intermediate2.data());
++    intermediate2.resize(len);
+     EXPECT_EQ(intermediate, intermediate2);
+ }
+ 
+@@ -73,22 +77,27 @@ void test_base64(const string& input, const string& expected_encoded) {
+ // same that come out.
+ TEST(UrlCodingTest, Basic) {
+     std::string input = "ABCDEFGHIJKLMNOPQRSTUWXYZ1234567890~!@#$%^&*()<>?,./:\";'{}|[]\\_+-=";
+-    test_url(input, "", false);
+-    test_url(input, "", true);
++    test_url(input, "");
+ }
+ 
+-TEST(UrlCodingTest, HiveExceptions) {
+-    test_url(" +", " +", true);
++TEST(UrlCodingTest, SpaceAndPlus) {
++    // Current url_encode implementation encodes space as '+' and '+' as '%2B'
++    test_url(" +", "+%2B");
+ }
+ 
+ TEST(UrlCodingTest, BlankString) {
+-    test_url("", "", false);
+-    test_url("", "", true);
++    test_url("", "");
+ }
+ 
+ TEST(UrlCodingTest, PathSeparators) {
+-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", false);
+-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", true);
++    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F");
++}
++
++TEST(UrlCodingTest, InvalidDecode) {
++    std::string output;
++    EXPECT_FALSE(url_decode("%2", &output));
++    EXPECT_FALSE(url_decode("%", &output));
++    EXPECT_FALSE(url_decode("%ZZ", &output));
+ }
+ 
+ TEST(Base64Test, Basic) {
+@@ -100,10 +109,18 @@ TEST(Base64Test, Basic) {
+     test_base64("abcdef", "YWJjZGVm");
+ }
+ 
++TEST(Base64Test, InvalidDecode) {
++    std::string output;
++    // Invalid characters
++    EXPECT_FALSE(base64_decode("YWJjZA==^", &output));
++    // Another invalid scenario if libbase64 rejects it
++    EXPECT_FALSE(base64_decode("YWJjZGU==", &output)); // length is 9, invalid base64 length
++}
++
+ TEST(HtmlEscapingTest, Basic) {
+     std::string before = "<html><body>&amp";
+     std::stringstream after;
+-    EscapeForHtml(before, &after);
++    escape_for_html(before, &after);
+     EXPECT_EQ(after.str(), "&lt;html&gt;&lt;body&gt;&amp;amp");
+ }
+ 
