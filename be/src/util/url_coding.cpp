@@ -21,12 +21,25 @@
 #include <libbase64.h>
 
 #include <cmath>
-#include <sstream>
 
 namespace doris {
 
 inline unsigned char to_hex(unsigned char x) {
     return x + (x > 9 ? ('A' - 10) : '0');
+}
+
+inline bool is_hex_digit(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+}
+
+inline int hex_digit_value(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return c - 'a' + 10;
 }
 
 // Adapted from http://dlib.net/dlib/server/server_http.cpp.html
@@ -59,19 +72,12 @@ bool url_decode(const std::string& in, std::string* out) {
 
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] == '%') {
-            if (i + 3 <= in.size()) {
-                int value = 0;
-                std::istringstream is(in.substr(i + 1, 2));
-
-                if (is >> std::hex >> value) {
-                    (*out) += static_cast<char>(value);
-                    i += 2;
-                } else {
-                    return false;
-                }
-            } else {
+            if (i + 2 >= in.size() || !is_hex_digit(in[i + 1]) || !is_hex_digit(in[i + 2])) {
                 return false;
             }
+            int value = (hex_digit_value(in[i + 1]) << 4) | hex_digit_value(in[i + 2]);
+            (*out) += static_cast<char>(value);
+            i += 2;
         } else if (in[i] == '+') {
             (*out) += ' ';
         } else {
