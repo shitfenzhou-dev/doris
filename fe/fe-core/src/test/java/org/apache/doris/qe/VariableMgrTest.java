@@ -237,4 +237,25 @@ public class VariableMgrTest {
                         new StringLiteral("0"))));
         Assert.assertTrue(blockSizeException.getMessage().contains("preferred_block_size_bytes"));
     }
+
+    @Test
+    public void testSqlSelectLimitConverter() throws DdlException {
+        Assert.assertEquals(Long.valueOf(Long.MAX_VALUE),
+                VariableVarConverters.encode(SessionVariable.SQL_SELECT_LIMIT, "DEFAULT"));
+        Assert.assertEquals(Long.valueOf(Long.MAX_VALUE),
+                VariableVarConverters.encode(SessionVariable.SQL_SELECT_LIMIT, "default"));
+        Assert.assertEquals(Long.valueOf(1024L),
+                VariableVarConverters.encode(SessionVariable.SQL_SELECT_LIMIT, "1024"));
+        Assert.assertEquals(String.valueOf(Long.MAX_VALUE),
+                VariableVarConverters.decode(SessionVariable.SQL_SELECT_LIMIT, Long.MAX_VALUE));
+        Assert.assertEquals("1024", VariableVarConverters.decode(SessionVariable.SQL_SELECT_LIMIT, 1024L));
+    }
+
+    @Test
+    public void testInvalidSqlSelectLimitConverter() {
+        Assert.assertThrows(DdlException.class,
+                () -> VariableVarConverters.encode(SessionVariable.SQL_SELECT_LIMIT, "invalid"));
+        Assert.assertThrows(DdlException.class,
+                () -> VariableVarConverters.encode(SessionVariable.SQL_SELECT_LIMIT, "18446744073709551616"));
+    }
 }

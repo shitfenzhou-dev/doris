@@ -18,10 +18,16 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.ErrorCode;
+import org.apache.doris.common.ErrorReport;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -40,6 +46,8 @@ import java.util.Map;
 public class VariableVarConverters {
 
     public static final Map<String, VariableVarConverterI> converters = Maps.newHashMap();
+
+    private static final LongValueHandler IDENTITY_HANDLER = value -> value;
 
     static {
         SqlModeConverter sqlModeConverter = new SqlModeConverter();
@@ -70,9 +78,60 @@ public class VariableVarConverters {
         return "";
     }
 
+    static long encodeNamedVariable(String value, String varName, Map<String, Long> valueSet, long allowedMask)
+            throws DdlException {
+        return encodeNamedVariable(value, varName, valueSet, allowedMask, IDENTITY_HANDLER, IDENTITY_HANDLER);
+    }
+
+    static long encodeNamedVariable(String value, String varName, Map<String, Long> valueSet, long allowedMask,
+            LongValueHandler numericValueHandler, LongValueHandler namedValueHandler) throws DdlException {
+        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(value);
+
+        long resultCode = 0L;
+        for (String key : names) {
+            long code;
+            if (StringUtils.isNumeric(key)) {
+                code = numericValueHandler.handle(Long.parseLong(key));
+            } else {
+                Long mappedValue = valueSet.get(key);
+                if (mappedValue == null) {
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+                }
+                code = namedValueHandler.handle(mappedValue);
+            }
+            resultCode |= code;
+            checkNamedVariableMask(varName, key, resultCode, allowedMask);
+        }
+        return resultCode;
+    }
+
+    static String decodeNamedVariable(long value, String varName, Map<String, Long> valueSet, long allowedMask)
+            throws DdlException {
+        checkNamedVariableMask(varName, value, value, allowedMask);
+
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : valueSet.entrySet()) {
+            if ((value & entry.getValue()) != 0) {
+                names.add(entry.getKey());
+            }
+        }
+        return Joiner.on(',').join(names);
+    }
+
+    private static void checkNamedVariableMask(String varName, Object invalidValue, long value, long allowedMask)
+            throws DdlException {
+        if ((value & ~allowedMask) != 0) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, invalidValue);
+        }
+    }
+
+    @FunctionalInterface
+    interface LongValueHandler {
+        long handle(long value) throws DdlException;
+    }
+
     /* Converters */
 
-    // Converter to convert sql mode variable
     public static class SqlModeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -85,7 +144,6 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert runtime filter type variable
     public static class RuntimeFilterTypeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -98,7 +156,6 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert sql select limit variable
     public static class SqlSelectLimitConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {

@@ -25,34 +25,52 @@ import org.junit.Test;
 public class SqlModeHelperTest {
 
     @Test
-    public void testNormal() throws DdlException {
-        String sqlMode = "PIPES_AS_CONCAT";
-        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
-
-        sqlMode = "";
-        Assert.assertEquals(new Long(0L), SqlModeHelper.encode(sqlMode));
-
-        sqlMode = "0,1, PIPES_AS_CONCAT";
-        Assert.assertEquals(new Long(3L), SqlModeHelper.encode(sqlMode));
-
-        long sqlModeValue = 2L;
-        Assert.assertEquals("PIPES_AS_CONCAT", SqlModeHelper.decode(sqlModeValue));
-
-        sqlModeValue = 0L;
-        Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
+    public void testEncodeStringValue() throws DdlException {
+        Assert.assertEquals(Long.valueOf(2L), SqlModeHelper.encode("PIPES_AS_CONCAT"));
+        Assert.assertEquals(Long.valueOf(2L), SqlModeHelper.encode("pipes_as_concat"));
+        Assert.assertEquals(Long.valueOf(0L), SqlModeHelper.encode(""));
+        Assert.assertEquals(Long.valueOf(3L), SqlModeHelper.encode("0,1, PIPES_AS_CONCAT"));
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidSqlMode() throws DdlException {
-        String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
-        SqlModeHelper.encode(sqlMode);
-        Assert.fail("No exception throws");
+    @Test
+    public void testEncodeCombineMode() throws DdlException {
+        long ansiMode = SqlModeHelper.MODE_ANSI
+                | SqlModeHelper.MODE_REAL_AS_FLOAT
+                | SqlModeHelper.MODE_PIPES_AS_CONCAT
+                | SqlModeHelper.MODE_ANSI_QUOTES
+                | SqlModeHelper.MODE_IGNORE_SPACE
+                | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY;
+        Assert.assertEquals(Long.valueOf(ansiMode), SqlModeHelper.encode("ANSI"));
+        Assert.assertEquals(Long.valueOf(ansiMode), SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_ANSI)));
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidDecode() throws DdlException {
-        long sqlMode = SqlModeHelper.MODE_LAST;
-        SqlModeHelper.decode(sqlMode);
-        Assert.fail("No exception throws");
+    @Test
+    public void testDecodeValue() throws DdlException {
+        Assert.assertEquals("PIPES_AS_CONCAT", SqlModeHelper.decode(2L));
+        Assert.assertEquals("", SqlModeHelper.decode(0L));
+        Assert.assertEquals("", SqlModeHelper.decode(SqlModeHelper.MODE_DEFAULT));
+        Assert.assertEquals("ANSI,ANSI_QUOTES,IGNORE_SPACE,ONLY_FULL_GROUP_BY,PIPES_AS_CONCAT,REAL_AS_FLOAT",
+                SqlModeHelper.decode(SqlModeHelper.encode("ANSI")));
+    }
+
+    @Test
+    public void testInvalidSqlModeName() {
+        Assert.assertThrows(DdlException.class,
+                () -> SqlModeHelper.encode("PIPES_AS_CONCAT, WRONG_MODE"));
+    }
+
+    @Test
+    public void testInvalidDecodeMask() {
+        Assert.assertThrows(DdlException.class, () -> SqlModeHelper.decode(SqlModeHelper.MODE_LAST));
+    }
+
+    @Test
+    public void testInvalidEncodeMask() {
+        Assert.assertThrows(DdlException.class, () -> SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_LAST)));
+    }
+
+    @Test
+    public void testOverflowNumber() {
+        Assert.assertThrows(NumberFormatException.class, () -> SqlModeHelper.encode("18446744073709551616"));
     }
 }
