@@ -57,6 +57,55 @@ public class RuntimeFilterTypeHelperTest {
         Assert.assertEquals("IN", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
     }
 
+    @Test
+    public void testEncodeNumeric() throws DdlException {
+        // Valid mask value
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("2"));
+        
+        // Mixed numeric and string
+        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("2, MIN_MAX"));
+        
+        // Out of allowed mask numeric value
+        try {
+            RuntimeFilterTypeHelper.encode("16"); // BITMAP is 16 now wait BITMAP_FILTER is 16? ALLOWED_MASK has BITMAP. Let's use a huge mask.
+            // Wait, let's use 1024 which is clearly out of mask
+            RuntimeFilterTypeHelper.encode("1024");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+
+        // Negative numeric value
+        try {
+            RuntimeFilterTypeHelper.encode("-1");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+
+        // Extremely large number that overflows long
+        try {
+            RuntimeFilterTypeHelper.encode("99999999999999999999");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+    }
+
+    @Test
+    public void testConverterEntrance() throws DdlException {
+        // Normal string combination
+        Assert.assertEquals(new Long(5L), VariableVarConverters.encode("runtime_filter_type", "IN,MIN_MAX"));
+
+        // Overflow value through converter
+        try {
+            VariableVarConverters.encode("runtime_filter_type", "99999999999999999999");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         RuntimeFilterTypeHelper.encode("BLOOM,IN");

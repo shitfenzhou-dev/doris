@@ -42,6 +42,53 @@ public class SqlModeHelperTest {
         Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
     }
 
+    @Test
+    public void testEncodeNumeric() throws DdlException {
+        // Valid mask value
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("2"));
+        
+        // Mixed numeric and string
+        Assert.assertEquals(new Long(6L), SqlModeHelper.encode("2, ANSI_QUOTES"));
+        
+        // Out of allowed mask numeric value
+        try {
+            SqlModeHelper.encode("34359738368"); // 1L << 35
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+
+        // Negative numeric value
+        try {
+            SqlModeHelper.encode("-1");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+
+        // Extremely large number that overflows long
+        try {
+            SqlModeHelper.encode("99999999999999999999");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+    }
+
+    @Test
+    public void testConverterEntrance() throws DdlException {
+        // Normal string combination
+        Assert.assertEquals(new Long(6L), VariableVarConverters.encode("sql_mode", "PIPES_AS_CONCAT,ANSI_QUOTES"));
+
+        // Overflow value through converter
+        try {
+            VariableVarConverters.encode("sql_mode", "99999999999999999999");
+            Assert.fail("Expected DdlException");
+        } catch (DdlException e) {
+            // expected
+        }
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
