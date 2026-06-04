@@ -82,12 +82,23 @@ TEST(TimezoneUtilsTest, ParseOffset) {
     EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("UTC", result));
     EXPECT_EQ(lookup_offset(result), 0);
 
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
     // out of range or illegal format
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+15:00", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("-13:00", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+800", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("0800", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("UTC+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("UTC+", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("GMT+8:75", result));
 }
 
 TEST(TimezoneUtilsTest, LoadOffsets) {
@@ -170,6 +181,14 @@ TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
     EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
     EXPECT_EQ(0, offset_seconds);
 
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
     ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("+08:00", result));
     EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
     EXPECT_EQ(8 * 3600, offset_seconds);
@@ -177,6 +196,10 @@ TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
     ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
     EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
     EXPECT_EQ(8 * 3600, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT+5", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(-5 * 3600, offset_seconds);
 
     ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("-06:00", result));
     EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
@@ -188,6 +211,104 @@ TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
 
     ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Asia/Shanghai", result));
     EXPECT_FALSE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+}
+
+TEST(TimezoneUtilsTest, GMTConsistency) {
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+
+    // Scenario 1: empty cache — resolve via normalize + parse_tz_offset_string
+    {
+        TimezoneUtils::clear_timezone_caches();
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        int32_t offset_seconds = -999;
+        EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+        EXPECT_EQ(0, offset_seconds);
+    }
+
+    // Scenario 2: only offsets loaded — resolve via normalize + parse_tz_offset_string
+    {
+        TimezoneUtils::clear_timezone_caches();
+        TimezoneUtils::load_offsets_to_cache();
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        int32_t offset_seconds = -999;
+        EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+        EXPECT_EQ(0, offset_seconds);
+    }
+
+    // Scenario 3: full timezone cache loaded — may hit cache or normalize path
+    {
+        TimezoneUtils::load_timezones_to_cache();
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        int32_t offset_seconds = -999;
+        EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+        EXPECT_EQ(0, offset_seconds);
+    }
+
+    // Case-insensitive aliases
+    {
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Gmt", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("etc/gmt", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+    }
+
+    // Etc/GMT vs Etc/GMT-8 distinction: Etc/GMT is zero, Etc/GMT-8 is +8h (POSIX reversed sign)
+    {
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+        EXPECT_EQ(lookup_offset(result), 0);
+
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
+        EXPECT_EQ(lookup_offset(result), 8 * 3600);
+
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT+5", result));
+        EXPECT_EQ(lookup_offset(result), -5 * 3600);
+    }
+
+    // Fixed offset seconds for cache-loaded GMT (tz.name() == "GMT")
+    {
+        cctz::time_zone result;
+        ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+        int32_t offset_seconds = -999;
+        EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+        EXPECT_EQ(0, offset_seconds);
+    }
+
+    // Existing offset formats still work
+    {
+        cctz::time_zone result;
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT-06:30", result));
+        EXPECT_EQ(lookup_offset(result), -(6 * 3600 + 1800));
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("UTC+8", result));
+        EXPECT_EQ(lookup_offset(result), 8 * 3600);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("+08:00", result));
+        EXPECT_EQ(lookup_offset(result), 8 * 3600);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("-00:30", result));
+        EXPECT_EQ(lookup_offset(result), -1800);
+        EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Asia/Shanghai", result));
+    }
+
+    // Illegal formats
+    {
+        cctz::time_zone result;
+        EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("UTC+", result));
+        EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("GMT+8:75", result));
+        EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("+800", result));
+    }
 }
 
 } // namespace doris
