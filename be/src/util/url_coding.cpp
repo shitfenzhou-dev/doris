@@ -49,6 +49,17 @@ void url_encode(const std::string_view& in, std::string* out) {
     *out = os.str();
 }
 
+static inline int hex_to_int(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return 0;
+}
+
+static inline bool is_hex(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
 // Adapted from
 // http://www.boost.org/doc/libs/1_40_0/doc/html/boost_asio/
 //   example/http/server3/request_handler.cpp
@@ -59,17 +70,19 @@ bool url_decode(const std::string& in, std::string* out) {
 
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] == '%') {
-            if (i + 3 <= in.size()) {
-                int value = 0;
-                std::istringstream is(in.substr(i + 1, 2));
-
-                if (is >> std::hex >> value) {
+            if (i + 2 < in.size()) {
+                char c1 = in[i + 1];
+                char c2 = in[i + 2];
+                if (is_hex(c1) && is_hex(c2)) {
+                    int value = (hex_to_int(c1) << 4) + hex_to_int(c2);
                     (*out) += static_cast<char>(value);
                     i += 2;
                 } else {
+                    out->clear();
                     return false;
                 }
             } else {
+                out->clear();
                 return false;
             }
         } else if (in[i] == '+') {
