@@ -25,70 +25,74 @@
 
 namespace doris {
 
-// Tests encoding/decoding of input.  If expected_encoded is non-empty, the
-// encoded string is validated against it.
-void test_url(const string& input, const string& expected_encoded, bool hive_compat) {
+void test_url(const std::string& input, const std::string& expected_encoded) {
     std::string intermediate;
-    url_encode(input, &intermediate, hive_compat);
+    url_encode(input, &intermediate);
     std::string output;
 
     if (!expected_encoded.empty()) {
         EXPECT_EQ(intermediate, expected_encoded);
     }
 
-    EXPECT_TRUE(UrlDecode(intermediate, &output, hive_compat));
+    EXPECT_TRUE(url_decode(intermediate, &output));
     EXPECT_EQ(input, output);
-
-    // Convert string to vector and try that also
-    std::vector<uint8_t> input_vector;
-    input_vector.resize(input.size());
-    memcpy(&input_vector[0], input.c_str(), input.size());
-    std::string intermediate2;
-    url_encode(input_vector, &intermediate2, hive_compat);
-    EXPECT_EQ(intermediate, intermediate2);
 }
 
-void test_base64(const string& input, const string& expected_encoded) {
+void test_base64(const std::string& input, const std::string& expected_encoded) {
     std::string intermediate;
-    Base64Encode(input, &intermediate);
+    base64_encode(input, &intermediate);
     std::string output;
 
     if (!expected_encoded.empty()) {
         EXPECT_EQ(intermediate, expected_encoded);
     }
 
-    EXPECT_TRUE(Base64Decode(intermediate, &output));
+    EXPECT_TRUE(base64_decode(intermediate, &output));
     EXPECT_EQ(input, output);
 
-    // Convert string to vector and try that also
-    std::vector<uint8_t> input_vector;
-    input_vector.resize(input.size());
-    memcpy(&input_vector[0], input.c_str(), input.size());
-    std::string intermediate2;
-    Base64Encode(input_vector, &intermediate2);
-    EXPECT_EQ(intermediate, intermediate2);
+    std::vector<uint8_t> buffer(intermediate.size(), 0);
+    int64_t decoded_len =
+            base64_decode(intermediate.data(), intermediate.size(), reinterpret_cast<char*>(buffer.data()));
+    EXPECT_GE(decoded_len, 0);
+    EXPECT_EQ(std::string(reinterpret_cast<char*>(buffer.data()), decoded_len), input);
 }
 
-// Test URL encoding. Check that the values that are put in are the
-// same that come out.
 TEST(UrlCodingTest, Basic) {
-    std::string input = "ABCDEFGHIJKLMNOPQRSTUWXYZ1234567890~!@#$%^&*()<>?,./:\";'{}|[]\\_+-=";
-    test_url(input, "", false);
-    test_url(input, "", true);
-}
-
-TEST(UrlCodingTest, HiveExceptions) {
-    test_url(" +", " +", true);
+    std::string input =
+            "ABCDEFGHIJKLMNOPQRSTUWXYZ1234567890~!@#$%^&*()<>?,./:\";'{}|[]\\_+-=";
+    test_url(input, "");
 }
 
 TEST(UrlCodingTest, BlankString) {
-    test_url("", "", false);
-    test_url("", "", true);
+    test_url("", "");
 }
 
 TEST(UrlCodingTest, PathSeparators) {
-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", false);
-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", true);
+    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F");
+}
+
+TEST(UrlCodingTest, SpaceEncoding) {
+    test_url("hello world", "hello+world");
+    test_url(" +", "+%2B");
+}
+
+TEST(UrlCodingTest, UrlDecodeInvalid) {
+    std::string output;
+
+    EXPECT_FALSE(url_decode("%", &output));
+
+    EXPECT_FALSE(url_decode("%1", &output));
+
+    EXPECT_FALSE(url_decode("%GG", &output));
+
+    EXPECT_TRUE(url_decode("hello", &output));
+    EXPECT_EQ(output, "hello");
+
+    EXPECT_TRUE(url_decode("%20", &output));
+    EXPECT_EQ(output, " ");
+
+    EXPECT_TRUE(url_decode("a+b", &output));
+    EXPECT_EQ(output, "a b");
 }
 
 TEST(Base64Test, Basic) {
@@ -100,11 +104,46 @@ TEST(Base64Test, Basic) {
     test_base64("abcdef", "YWJjZGVm");
 }
 
+TEST(Base64Test, EmptyString) {
+    std::string encoded;
+    base64_encode("", &encoded);
+    EXPECT_EQ(encoded, "");
+
+    std::string decoded;
+    EXPECT_TRUE(base64_decode("", &decoded));
+    EXPECT_EQ(decoded, "");
+}
+
+TEST(Base64Test, RawBufferEncode) {
+    const std::string input = "hello";
+    std::string encoded;
+    base64_encode(input, &encoded);
+
+    std::vector<unsigned char> buffer(encoded.size() + 16, 0);
+    size_t len = base64_encode(reinterpret_cast<const unsigned char*>(input.data()), input.size(),
+                               buffer.data());
+    EXPECT_EQ(std::string(reinterpret_cast<char*>(buffer.data()), len), encoded);
+}
+
+TEST(Base64Test, DecodeInvalid) {
+    std::string output;
+
+    EXPECT_FALSE(base64_decode("!!!invalid!!!", &output));
+
+    EXPECT_FALSE(base64_decode("====", &output));
+}
+
 TEST(HtmlEscapingTest, Basic) {
     std::string before = "<html><body>&amp";
     std::stringstream after;
-    EscapeForHtml(before, &after);
+    escape_for_html(before, &after);
     EXPECT_EQ(after.str(), "&lt;html&gt;&lt;body&gt;&amp;amp");
+}
+
+TEST(HtmlEscapingTest, ToString) {
+    std::string before = "<html><body>&amp";
+    std::string result = escape_for_html_to_string(before);
+    EXPECT_EQ(result, "&lt;html&gt;&lt;body&gt;&amp;amp");
 }
 
 } // namespace doris
