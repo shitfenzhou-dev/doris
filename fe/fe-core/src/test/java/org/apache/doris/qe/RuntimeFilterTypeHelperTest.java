@@ -86,4 +86,103 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test
+    public void testCaseInsensitive() throws DdlException {
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("in"));
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("In"));
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("IN"));
+
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("bloom_filter"));
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("Bloom_Filter"));
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("BLOOM_FILTER"));
+    }
+
+    @Test
+    public void testNumericValue() throws DdlException {
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("1,4"));
+        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("2,4"));
+    }
+
+    @Test
+    public void testBitmapFilter() throws DdlException {
+        Assert.assertEquals(new Long(16L), RuntimeFilterTypeHelper.encode("BITMAP_FILTER"));
+        Assert.assertEquals(new Long(20L), RuntimeFilterTypeHelper.encode("BITMAP_FILTER,MIN_MAX"));
+    }
+
+    @Test
+    public void testDecodeWithMultipleBits() throws DdlException {
+        long value = 5L;
+        Assert.assertEquals("IN,MIN_MAX", RuntimeFilterTypeHelper.decode(value));
+
+        value = 6L;
+        Assert.assertEquals("BLOOM_FILTER,MIN_MAX", RuntimeFilterTypeHelper.decode(value));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        long invalidMask = RuntimeFilterTypeHelper.ALLOWED_MASK << 1;
+        RuntimeFilterTypeHelper.decode(invalidMask);
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testLargeNumericValue() throws DdlException {
+        long validValue = 16L;
+        Assert.assertEquals(new Long(validValue), RuntimeFilterTypeHelper.encode(String.valueOf(validValue)));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidName() throws DdlException {
+        RuntimeFilterTypeHelper.encode("INVALID_TYPE");
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testIsSupportedVarValue() {
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("in"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BLOOM_FILTER"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue("INVALID"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue(null));
+    }
+
+    @Test
+    public void testAllowedRuntimeFilterType() {
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(1L,
+                org.apache.doris.thrift.TRuntimeFilterType.IN));
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(2L,
+                org.apache.doris.thrift.TRuntimeFilterType.BLOOM));
+        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(4L,
+                org.apache.doris.thrift.TRuntimeFilterType.MIN_MAX));
+        Assert.assertFalse(RuntimeFilterTypeHelper.allowedRuntimeFilterType(1L,
+                org.apache.doris.thrift.TRuntimeFilterType.BLOOM));
+    }
+
+    @Test
+    public void testMutualExclusion() throws DdlException {
+        RuntimeFilterTypeHelper.encode("MIN_MAX,BITMAP_FILTER");
+
+        try {
+            RuntimeFilterTypeHelper.encode("IN,BLOOM_FILTER");
+            Assert.fail("Should throw exception for IN and BLOOM_FILTER together");
+        } catch (DdlException e) {
+            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
+        }
+
+        try {
+            RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+            Assert.fail("Should throw exception for IN and IN_OR_BLOOM_FILTER together");
+        } catch (DdlException e) {
+            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
+        }
+
+        try {
+            RuntimeFilterTypeHelper.encode("BLOOM_FILTER,IN_OR_BLOOM_FILTER");
+            Assert.fail("Should throw exception for BLOOM_FILTER and IN_OR_BLOOM_FILTER together");
+        } catch (DdlException e) {
+            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
+        }
+    }
 }

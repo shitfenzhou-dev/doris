@@ -1,0 +1,377 @@
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+index 4ce4dc68ff..ee80633d48 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+@@ -22,15 +22,10 @@ import org.apache.doris.common.ErrorCode;
+ import org.apache.doris.common.ErrorReport;
+ import org.apache.doris.thrift.TRuntimeFilterType;
+ 
+-import com.google.common.base.Joiner;
+-import com.google.common.base.Splitter;
+-import com.google.common.collect.Maps;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+-import java.util.ArrayList;
+-import java.util.List;
+ import java.util.Map;
+ 
+ /**
+@@ -45,7 +40,7 @@ public class RuntimeFilterTypeHelper {
+             | TRuntimeFilterType.IN_OR_BLOOM.getValue()
+             | TRuntimeFilterType.BITMAP.getValue());
+ 
+-    private static final Map<String, Long> varValueSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
++    private static final Map<String, Long> varValueSet = BitMaskVarConverter.newCaseInsensitiveMap();
+ 
+     static {
+         varValueSet.put("IN", (long) TRuntimeFilterType.IN.getValue());
+@@ -61,48 +56,29 @@ public class RuntimeFilterTypeHelper {
+ 
+     // convert long type variable value to string type that user can read
+     public static String decode(Long varValue) throws DdlException {
+-        // 0 parse to empty string
+         if (varValue == 0) {
+             return "";
+         }
+-        if ((varValue & ~ALLOWED_MASK) != 0) {
+-            ErrorReport.reportDdlException(
+-                    ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, varValue);
+-        }
+-
+-        List<String> names = new ArrayList<String>();
+-        for (Map.Entry<String, Long> value : getSupportedVarValue().entrySet()) {
+-            if ((varValue & value.getValue()) != 0) {
+-                names.add(value.getKey());
+-            }
+-        }
+-
+-        return Joiner.on(',').join(names);
++        return BitMaskVarConverter.decode(varValue, getSupportedVarValue(), ALLOWED_MASK,
++                SessionVariable.RUNTIME_FILTER_TYPE);
+     }
+ 
+     // convert string type variable value to long type that session can store
+     public static Long encode(String varValue) throws DdlException {
+-        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
+-
+-        // empty string parse to 0
+-        long resultCode = 0;
+-        for (String key : names) {
+-            long code = 0;
+-            if (StringUtils.isNumeric(key)) {
+-                code |= Long.parseLong(key);
+-            } else {
+-                code = getCodeFromString(key);
+-                if (code == 0) {
+-                    ErrorReport.reportDdlException(
+-                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+-                }
+-            }
+-            resultCode |= code;
+-            if ((resultCode & ~ALLOWED_MASK) != 0) {
+-                ErrorReport.reportDdlException(
+-                        ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+-            }
+-        }
++        long resultCode = BitMaskVarConverter.encode(varValue, getSupportedVarValue(), ALLOWED_MASK,
++                SessionVariable.RUNTIME_FILTER_TYPE, key -> {
++                    long code = 0;
++                    if (StringUtils.isNumeric(key)) {
++                        code = Long.parseLong(key);
++                    } else {
++                        code = getCodeFromString(key);
++                        if (code == 0) {
++                            ErrorReport.reportDdlException(
++                                    ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
++                        }
++                    }
++                    return code;
++                });
+ 
+         int count = 0;
+         if (allowedRuntimeFilterType(resultCode, TRuntimeFilterType.IN_OR_BLOOM)) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+index 2b66297333..87ad3d744e 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+@@ -22,15 +22,10 @@ import org.apache.doris.common.DdlException;
+ import org.apache.doris.common.ErrorCode;
+ import org.apache.doris.common.ErrorReport;
+ 
+-import com.google.common.base.Joiner;
+-import com.google.common.base.Splitter;
+ import com.google.common.collect.Maps;
+-import org.apache.commons.lang3.StringUtils;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+-import java.util.ArrayList;
+-import java.util.List;
+ import java.util.Map;
+ 
+ public class SqlModeHelper {
+@@ -85,9 +80,9 @@ public class SqlModeHelper {
+ 
+     public static final long MODE_COMBINE_MASK = (MODE_ANSI | MODE_TRADITIONAL);
+ 
+-    private static final Map<String, Long> sqlModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
++    private static final Map<String, Long> sqlModeSet = BitMaskVarConverter.newCaseInsensitiveMap();
+ 
+-    private static final Map<String, Long> combineModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
++    private static final Map<String, Long> combineModeSet = BitMaskVarConverter.newCaseInsensitiveMap();
+ 
+     static {
+         sqlModeSet.put("DEFAULT", MODE_DEFAULT);
+@@ -127,30 +122,14 @@ public class SqlModeHelper {
+             //For compatibility with older versions， return empty string
+             return "";
+         }
+-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
+-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
+-        }
+-
+-        List<String> names = new ArrayList<String>();
+-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
+-            if ((sqlMode & mode.getValue()) != 0) {
+-                names.add(mode.getKey());
+-            }
+-        }
+-
+-        return Joiner.on(',').join(names);
++        return BitMaskVarConverter.decode(sqlMode, getSupportedSqlMode(), MODE_ALLOWED_MASK, SessionVariable.SQL_MODE);
+     }
+ 
+     // convert string type SQL MODE to long type that session can store
+     public static Long encode(String sqlMode) throws DdlException {
+-        List<String> names =
+-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
+-
+-        // empty string parse to 0
+-        long resultCode = 0L;
+-        for (String key : names) {
++        return BitMaskVarConverter.encode(sqlMode, MODE_ALLOWED_MASK, SessionVariable.SQL_MODE, key -> {
+             long code = 0L;
+-            if (StringUtils.isNumeric(key)) {
++            if (BitMaskVarConverter.isNumeric(key)) {
+                 code |= expand(Long.valueOf(key));
+             } else {
+                 code = getCodeFromString(key);
+@@ -158,12 +137,8 @@ public class SqlModeHelper {
+                     ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+                 }
+             }
+-            resultCode |= code;
+-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
+-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+-            }
+-        }
+-        return resultCode;
++            return code;
++        });
+     }
+ 
+     // expand the combine mode if exists
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+index 4adb83ce6d..c008966063 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+@@ -86,4 +86,103 @@ public class RuntimeFilterTypeHelperTest {
+         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+         Assert.fail("No exception throws");
+     }
++
++    @Test
++    public void testCaseInsensitive() throws DdlException {
++        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("in"));
++        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("In"));
++        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("IN"));
++
++        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("bloom_filter"));
++        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("Bloom_Filter"));
++        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("BLOOM_FILTER"));
++    }
++
++    @Test
++    public void testNumericValue() throws DdlException {
++        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
++        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("1,4"));
++        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("2,4"));
++    }
++
++    @Test
++    public void testBitmapFilter() throws DdlException {
++        Assert.assertEquals(new Long(16L), RuntimeFilterTypeHelper.encode("BITMAP_FILTER"));
++        Assert.assertEquals(new Long(20L), RuntimeFilterTypeHelper.encode("BITMAP_FILTER,MIN_MAX"));
++    }
++
++    @Test
++    public void testDecodeWithMultipleBits() throws DdlException {
++        long value = 5L;
++        Assert.assertEquals("IN,MIN_MAX", RuntimeFilterTypeHelper.decode(value));
++
++        value = 6L;
++        Assert.assertEquals("BLOOM_FILTER,MIN_MAX", RuntimeFilterTypeHelper.decode(value));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMask() throws DdlException {
++        long invalidMask = RuntimeFilterTypeHelper.ALLOWED_MASK << 1;
++        RuntimeFilterTypeHelper.decode(invalidMask);
++        Assert.fail("No exception throws");
++    }
++
++    @Test
++    public void testLargeNumericValue() throws DdlException {
++        long validValue = 16L;
++        Assert.assertEquals(new Long(validValue), RuntimeFilterTypeHelper.encode(String.valueOf(validValue)));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidName() throws DdlException {
++        RuntimeFilterTypeHelper.encode("INVALID_TYPE");
++        Assert.fail("No exception throws");
++    }
++
++    @Test
++    public void testIsSupportedVarValue() {
++        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN"));
++        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("in"));
++        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BLOOM_FILTER"));
++        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue("INVALID"));
++        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue(null));
++    }
++
++    @Test
++    public void testAllowedRuntimeFilterType() {
++        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(1L,
++                org.apache.doris.thrift.TRuntimeFilterType.IN));
++        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(2L,
++                org.apache.doris.thrift.TRuntimeFilterType.BLOOM));
++        Assert.assertTrue(RuntimeFilterTypeHelper.allowedRuntimeFilterType(4L,
++                org.apache.doris.thrift.TRuntimeFilterType.MIN_MAX));
++        Assert.assertFalse(RuntimeFilterTypeHelper.allowedRuntimeFilterType(1L,
++                org.apache.doris.thrift.TRuntimeFilterType.BLOOM));
++    }
++
++    @Test
++    public void testMutualExclusion() throws DdlException {
++        RuntimeFilterTypeHelper.encode("MIN_MAX,BITMAP_FILTER");
++
++        try {
++            RuntimeFilterTypeHelper.encode("IN,BLOOM_FILTER");
++            Assert.fail("Should throw exception for IN and BLOOM_FILTER together");
++        } catch (DdlException e) {
++            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
++        }
++
++        try {
++            RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
++            Assert.fail("Should throw exception for IN and IN_OR_BLOOM_FILTER together");
++        } catch (DdlException e) {
++            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
++        }
++
++        try {
++            RuntimeFilterTypeHelper.encode("BLOOM_FILTER,IN_OR_BLOOM_FILTER");
++            Assert.fail("Should throw exception for BLOOM_FILTER and IN_OR_BLOOM_FILTER together");
++        } catch (DdlException e) {
++            Assert.assertTrue(e.getMessage().contains("can not be enabled at the same time"));
++        }
++    }
+ }
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+index 96b9713844..38334933ed 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+@@ -55,4 +55,89 @@ public class SqlModeHelperTest {
+         SqlModeHelper.decode(sqlMode);
+         Assert.fail("No exception throws");
+     }
++
++    @Test
++    public void testCaseInsensitive() throws DdlException {
++        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("pipes_as_concat"));
++        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("Pipes_As_Concat"));
++        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("PIPES_AS_CONCAT"));
++    }
++
++    @Test
++    public void testNumericValue() throws DdlException {
++        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("2"));
++        Assert.assertEquals(new Long(6L), SqlModeHelper.encode("2,4"));
++        Assert.assertEquals(new Long(10L), SqlModeHelper.encode("2,8"));
++    }
++
++    @Test
++    public void testCombinedMode() throws DdlException {
++        long ansiMode = SqlModeHelper.encode("ANSI");
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_ANSI) != 0);
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_REAL_AS_FLOAT) != 0);
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_PIPES_AS_CONCAT) != 0);
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_ANSI_QUOTES) != 0);
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_IGNORE_SPACE) != 0);
++        Assert.assertTrue((ansiMode & SqlModeHelper.MODE_ONLY_FULL_GROUP_BY) != 0);
++
++        long traditionalMode = SqlModeHelper.encode("TRADITIONAL");
++        Assert.assertTrue((traditionalMode & SqlModeHelper.MODE_TRADITIONAL) != 0);
++        Assert.assertTrue((traditionalMode & SqlModeHelper.MODE_STRICT_TRANS_TABLES) != 0);
++        Assert.assertTrue((traditionalMode & SqlModeHelper.MODE_STRICT_ALL_TABLES) != 0);
++    }
++
++    @Test
++    public void testNumericWithCombineModeExpansion() throws DdlException {
++        long ansiNumeric = SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_ANSI));
++        Assert.assertTrue((ansiNumeric & SqlModeHelper.MODE_ANSI) != 0);
++        Assert.assertTrue((ansiNumeric & SqlModeHelper.MODE_REAL_AS_FLOAT) != 0);
++        Assert.assertTrue((ansiNumeric & SqlModeHelper.MODE_PIPES_AS_CONCAT) != 0);
++    }
++
++    @Test
++    public void testMultipleModes() throws DdlException {
++        String sqlMode = "PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE";
++        long encoded = SqlModeHelper.encode(sqlMode);
++        Assert.assertEquals(new Long(14L), encoded);
++        Assert.assertEquals("PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE", SqlModeHelper.decode(encoded));
++    }
++
++    @Test
++    public void testDecodeWithMultipleBits() throws DdlException {
++        long value = SqlModeHelper.MODE_PIPES_AS_CONCAT | SqlModeHelper.MODE_ANSI_QUOTES;
++        Assert.assertEquals("PIPES_AS_CONCAT,ANSI_QUOTES", SqlModeHelper.decode(value));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMask() throws DdlException {
++        long invalidMask = SqlModeHelper.MODE_ALLOWED_MASK << 1;
++        SqlModeHelper.decode(invalidMask);
++        Assert.fail("No exception throws");
++    }
++
++    @Test
++    public void testLargeNumericValue() throws DdlException {
++        long largeValue = 1L << 34;
++        Assert.assertEquals(new Long(largeValue), SqlModeHelper.encode(String.valueOf(largeValue)));
++    }
++
++    @Test
++    public void testDefaultModeDecode() throws DdlException {
++        Assert.assertEquals("", SqlModeHelper.decode(SqlModeHelper.MODE_DEFAULT));
++    }
++
++    @Test
++    public void testIsSupportedSqlMode() {
++        Assert.assertTrue(SqlModeHelper.isSupportedSqlMode("PIPES_AS_CONCAT"));
++        Assert.assertTrue(SqlModeHelper.isSupportedSqlMode("pipes_as_concat"));
++        Assert.assertFalse(SqlModeHelper.isSupportedSqlMode("INVALID_MODE"));
++        Assert.assertFalse(SqlModeHelper.isSupportedSqlMode(null));
++    }
++
++    @Test
++    public void testIsCombineMode() {
++        Assert.assertTrue(SqlModeHelper.isCombineMode("ANSI"));
++        Assert.assertTrue(SqlModeHelper.isCombineMode("TRADITIONAL"));
++        Assert.assertFalse(SqlModeHelper.isCombineMode("PIPES_AS_CONCAT"));
++    }
+ }

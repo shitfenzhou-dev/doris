@@ -22,15 +22,10 @@ import org.apache.doris.common.DdlException;
 import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 public class SqlModeHelper {
@@ -85,9 +80,9 @@ public class SqlModeHelper {
 
     public static final long MODE_COMBINE_MASK = (MODE_ANSI | MODE_TRADITIONAL);
 
-    private static final Map<String, Long> sqlModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
+    private static final Map<String, Long> sqlModeSet = BitMaskVarConverter.newCaseInsensitiveMap();
 
-    private static final Map<String, Long> combineModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
+    private static final Map<String, Long> combineModeSet = BitMaskVarConverter.newCaseInsensitiveMap();
 
     static {
         sqlModeSet.put("DEFAULT", MODE_DEFAULT);
@@ -127,30 +122,14 @@ public class SqlModeHelper {
             //For compatibility with older versions， return empty string
             return "";
         }
-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
-        }
-
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
-            if ((sqlMode & mode.getValue()) != 0) {
-                names.add(mode.getKey());
-            }
-        }
-
-        return Joiner.on(',').join(names);
+        return BitMaskVarConverter.decode(sqlMode, getSupportedSqlMode(), MODE_ALLOWED_MASK, SessionVariable.SQL_MODE);
     }
 
     // convert string type SQL MODE to long type that session can store
     public static Long encode(String sqlMode) throws DdlException {
-        List<String> names =
-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
-
-        // empty string parse to 0
-        long resultCode = 0L;
-        for (String key : names) {
+        return BitMaskVarConverter.encode(sqlMode, MODE_ALLOWED_MASK, SessionVariable.SQL_MODE, key -> {
             long code = 0L;
-            if (StringUtils.isNumeric(key)) {
+            if (BitMaskVarConverter.isNumeric(key)) {
                 code |= expand(Long.valueOf(key));
             } else {
                 code = getCodeFromString(key);
@@ -158,12 +137,8 @@ public class SqlModeHelper {
                     ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
                 }
             }
-            resultCode |= code;
-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-            }
-        }
-        return resultCode;
+            return code;
+        });
     }
 
     // expand the combine mode if exists

@@ -22,15 +22,10 @@ import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
 import org.apache.doris.thrift.TRuntimeFilterType;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
-import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,7 +40,7 @@ public class RuntimeFilterTypeHelper {
             | TRuntimeFilterType.IN_OR_BLOOM.getValue()
             | TRuntimeFilterType.BITMAP.getValue());
 
-    private static final Map<String, Long> varValueSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
+    private static final Map<String, Long> varValueSet = BitMaskVarConverter.newCaseInsensitiveMap();
 
     static {
         varValueSet.put("IN", (long) TRuntimeFilterType.IN.getValue());
@@ -61,48 +56,29 @@ public class RuntimeFilterTypeHelper {
 
     // convert long type variable value to string type that user can read
     public static String decode(Long varValue) throws DdlException {
-        // 0 parse to empty string
         if (varValue == 0) {
             return "";
         }
-        if ((varValue & ~ALLOWED_MASK) != 0) {
-            ErrorReport.reportDdlException(
-                    ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, varValue);
-        }
-
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, Long> value : getSupportedVarValue().entrySet()) {
-            if ((varValue & value.getValue()) != 0) {
-                names.add(value.getKey());
-            }
-        }
-
-        return Joiner.on(',').join(names);
+        return BitMaskVarConverter.decode(varValue, getSupportedVarValue(), ALLOWED_MASK,
+                SessionVariable.RUNTIME_FILTER_TYPE);
     }
 
     // convert string type variable value to long type that session can store
     public static Long encode(String varValue) throws DdlException {
-        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
-
-        // empty string parse to 0
-        long resultCode = 0;
-        for (String key : names) {
-            long code = 0;
-            if (StringUtils.isNumeric(key)) {
-                code |= Long.parseLong(key);
-            } else {
-                code = getCodeFromString(key);
-                if (code == 0) {
-                    ErrorReport.reportDdlException(
-                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
-                }
-            }
-            resultCode |= code;
-            if ((resultCode & ~ALLOWED_MASK) != 0) {
-                ErrorReport.reportDdlException(
-                        ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
-            }
-        }
+        long resultCode = BitMaskVarConverter.encode(varValue, getSupportedVarValue(), ALLOWED_MASK,
+                SessionVariable.RUNTIME_FILTER_TYPE, key -> {
+                    long code = 0;
+                    if (StringUtils.isNumeric(key)) {
+                        code = Long.parseLong(key);
+                    } else {
+                        code = getCodeFromString(key);
+                        if (code == 0) {
+                            ErrorReport.reportDdlException(
+                                    ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+                        }
+                    }
+                    return code;
+                });
 
         int count = 0;
         if (allowedRuntimeFilterType(resultCode, TRuntimeFilterType.IN_OR_BLOOM)) {
