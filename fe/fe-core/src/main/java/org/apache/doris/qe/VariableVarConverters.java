@@ -18,6 +18,8 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.ErrorCode;
+import org.apache.doris.common.ErrorReport;
 
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
@@ -70,6 +72,19 @@ public class VariableVarConverters {
         return "";
     }
 
+    public static long parseLongSafe(String value, String varName) throws DdlException {
+        try {
+            long result = Long.parseLong(value);
+            if (result < 0) {
+                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, value);
+            }
+            return result;
+        } catch (NumberFormatException e) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, value);
+        }
+        return 0L;
+    }
+
     /* Converters */
 
     // Converter to convert sql mode variable
@@ -106,7 +121,11 @@ public class VariableVarConverters {
                 return Long.MAX_VALUE;
             } else {
                 try {
-                    return Long.parseLong(value);
+                    long result = Long.parseLong(value);
+                    if (result < 0) {
+                        throw new DdlException("Invalid sql_select_limit value: " + value);
+                    }
+                    return result;
                 } catch (NumberFormatException e) {
                     throw new DdlException("Invalid sql_select_limit value: " + value);
                 }
@@ -123,7 +142,7 @@ public class VariableVarConverters {
         @Override
         public Long encode(String value) throws DdlException {
             if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+                long val = parseLongSafe(value, GlobalVariable.VALIDATE_PASSWORD_POLICY);
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);

@@ -55,4 +55,97 @@ public class SqlModeHelperTest {
         SqlModeHelper.decode(sqlMode);
         Assert.fail("No exception throws");
     }
+
+    @Test
+    public void testValidNumericInput() throws DdlException {
+        Assert.assertEquals(new Long(0L), SqlModeHelper.encode("0"));
+        Assert.assertEquals(new Long(1L), SqlModeHelper.encode("1"));
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode("2"));
+        Assert.assertEquals(new Long(32L), SqlModeHelper.encode("32"));
+    }
+
+    @Test
+    public void testValidStringCombination() throws DdlException {
+        long result = SqlModeHelper.encode("PIPES_AS_CONCAT,ANSI_QUOTES");
+        Assert.assertEquals(new Long(6L), result);
+
+        result = SqlModeHelper.encode("ANSI");
+        Assert.assertTrue((result & SqlModeHelper.MODE_PIPES_AS_CONCAT) != 0);
+        Assert.assertTrue((result & SqlModeHelper.MODE_ANSI_QUOTES) != 0);
+
+        result = SqlModeHelper.encode("TRADITIONAL");
+        Assert.assertTrue((result & SqlModeHelper.MODE_STRICT_TRANS_TABLES) != 0);
+        Assert.assertTrue((result & SqlModeHelper.MODE_STRICT_ALL_TABLES) != 0);
+    }
+
+    @Test
+    public void testMixedNumericAndString() throws DdlException {
+        long result = SqlModeHelper.encode("2, ANSI_QUOTES");
+        Assert.assertEquals(new Long(6L), result);
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaHelper() throws DdlException {
+        SqlModeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaHelper() throws DdlException {
+        SqlModeHelper.encode("-1");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeLargeNumericViaHelper() throws DdlException {
+        SqlModeHelper.encode("-99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaHelper() throws DdlException {
+        SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_LAST));
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.SQL_MODE, "99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.SQL_MODE, "-1");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaConverter() throws DdlException {
+        VariableVarConverters.encode(
+                SessionVariable.SQL_MODE, String.valueOf(SqlModeHelper.MODE_LAST));
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testValidNumericViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(2L),
+                VariableVarConverters.encode(SessionVariable.SQL_MODE, "2"));
+        Assert.assertEquals(new Long(0L),
+                VariableVarConverters.encode(SessionVariable.SQL_MODE, "0"));
+    }
+
+    @Test
+    public void testValidStringViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(2L),
+                VariableVarConverters.encode(SessionVariable.SQL_MODE, "PIPES_AS_CONCAT"));
+    }
+
+    @Test
+    public void testDecodeViaConverter() throws DdlException {
+        Assert.assertEquals("PIPES_AS_CONCAT",
+                VariableVarConverters.decode(SessionVariable.SQL_MODE, 2L));
+        Assert.assertEquals("",
+                VariableVarConverters.decode(SessionVariable.SQL_MODE, 0L));
+    }
 }

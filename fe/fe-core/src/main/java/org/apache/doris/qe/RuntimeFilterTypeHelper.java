@@ -88,8 +88,11 @@ public class RuntimeFilterTypeHelper {
         long resultCode = 0;
         for (String key : names) {
             long code = 0;
-            if (StringUtils.isNumeric(key)) {
-                code |= Long.parseLong(key);
+            if (key.startsWith("-")) {
+                ErrorReport.reportDdlException(
+                        ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+            } else if (StringUtils.isNumeric(key)) {
+                code |= VariableVarConverters.parseLongSafe(key, SessionVariable.RUNTIME_FILTER_TYPE);
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {

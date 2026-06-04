@@ -86,4 +86,84 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test
+    public void testValidNumericInput() throws DdlException {
+        Assert.assertEquals(new Long(0L), RuntimeFilterTypeHelper.encode("0"));
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
+        Assert.assertEquals(new Long(4L), RuntimeFilterTypeHelper.encode("4"));
+    }
+
+    @Test
+    public void testValidStringCombination() throws DdlException {
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("IN,MIN_MAX"));
+        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode("MIN_MAX,BLOOM_FILTER"));
+        Assert.assertEquals(new Long(12L), RuntimeFilterTypeHelper.encode("MIN_MAX,IN_OR_BLOOM_FILTER"));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-1");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeLargeNumericViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("32");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "-1");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "32");
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testValidNumericViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(1L),
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "1"));
+        Assert.assertEquals(new Long(0L),
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "0"));
+    }
+
+    @Test
+    public void testValidStringViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(1L),
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "IN"));
+        Assert.assertEquals(new Long(4L),
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "MIN_MAX"));
+    }
+
+    @Test
+    public void testDecodeViaConverter() throws DdlException {
+        Assert.assertEquals("IN",
+                VariableVarConverters.decode(SessionVariable.RUNTIME_FILTER_TYPE, 1L));
+        Assert.assertEquals("",
+                VariableVarConverters.decode(SessionVariable.RUNTIME_FILTER_TYPE, 0L));
+    }
 }
