@@ -59,6 +59,15 @@ std::unique_ptr<ZoneList> lower_zone_cache_ = std::make_unique<ZoneList>();
 const std::string TimezoneUtils::default_time_zone = "+08:00";
 static const char* tzdir = "/usr/share/zoneinfo"; // default value, may change by TZDIR env var
 
+static bool is_zero_offset_timezone_alias(std::string_view timezone) {
+    return timezone == "utc" || timezone == "etc/utc" || timezone == "zulu" ||
+           timezone == "gmt" || timezone == "etc/gmt";
+}
+
+static bool has_utc_or_gmt_offset_prefix(std::string_view timezone) {
+    return timezone.rfind("utc", 0) == 0 || timezone.rfind("gmt", 0) == 0;
+}
+
 void TimezoneUtils::clear_timezone_caches() {
     lower_zone_cache_->clear();
 }
@@ -180,14 +189,12 @@ bool TimezoneUtils::find_cctz_time_zone(const std::string& timezone, cctz::time_
 bool TimezoneUtils::try_get_fixed_offset_seconds(const cctz::time_zone& timezone,
                                                  int32_t* offset_seconds) {
     const std::string& timezone_name = timezone.name();
-    if (timezone_name == "UTC" || timezone_name == "Etc/UTC" || timezone_name == "Etc/GMT") {
+    std::string normalized;
+    if (normalize_timezone_name(timezone_name, &normalized) && normalized == "UTC") {
         *offset_seconds = 0;
         return true;
     }
 
-    // cctz names fixed_time_zone() instances with the "Fixed/" prefix. TZDB's Etc/GMT*
-    // zones are fixed offsets too; cctz handles their POSIX-style reversed sign in lookup_offset().
-    // If this naming convention changes, falling through to the generic path remains correct.
     static const auto epoch = std::chrono::time_point_cast<cctz::sys_seconds>(
             std::chrono::system_clock::from_time_t(0));
     if (timezone_name.compare(0, 6, "Fixed/") == 0 || timezone_name.compare(0, 7, "Etc/GMT") == 0) {
@@ -247,15 +254,12 @@ static bool normalize_offset_string(const std::string& timezone, bool allow_hour
 
 bool TimezoneUtils::normalize_timezone_name(const std::string& timezone, std::string* normalized) {
     const std::string lower = to_lower_copy(timezone);
-    if (lower == "utc" || lower == "etc/utc" || lower == "zulu") {
+    if (is_zero_offset_timezone_alias(lower)) {
         *normalized = "UTC";
         return true;
     }
 
-    if (lower.rfind("utc", 0) == 0 || lower.rfind("gmt", 0) == 0) {
-        if (timezone.size() <= 3) {
-            return false;
-        }
+    if (has_utc_or_gmt_offset_prefix(lower)) {
         return normalize_offset_string(timezone.substr(3), true, normalized);
     }
 
