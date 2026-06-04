@@ -180,7 +180,8 @@ bool TimezoneUtils::find_cctz_time_zone(const std::string& timezone, cctz::time_
 bool TimezoneUtils::try_get_fixed_offset_seconds(const cctz::time_zone& timezone,
                                                  int32_t* offset_seconds) {
     const std::string& timezone_name = timezone.name();
-    if (timezone_name == "UTC" || timezone_name == "Etc/UTC" || timezone_name == "Etc/GMT") {
+    if (timezone_name == "UTC" || timezone_name == "Etc/UTC" || timezone_name == "Etc/GMT" ||
+        timezone_name == "GMT") {
         *offset_seconds = 0;
         return true;
     }
@@ -247,7 +248,8 @@ static bool normalize_offset_string(const std::string& timezone, bool allow_hour
 
 bool TimezoneUtils::normalize_timezone_name(const std::string& timezone, std::string* normalized) {
     const std::string lower = to_lower_copy(timezone);
-    if (lower == "utc" || lower == "etc/utc" || lower == "zulu") {
+    if (lower == "utc" || lower == "etc/utc" || lower == "zulu" || lower == "gmt" ||
+        lower == "etc/gmt") {
         *normalized = "UTC";
         return true;
     }

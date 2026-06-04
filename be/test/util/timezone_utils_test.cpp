@@ -190,4 +190,120 @@ TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
     EXPECT_FALSE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
 }
 
+TEST(TimezoneUtilsTest, GMTAliasesWithEmptyCache) {
+    TimezoneUtils::clear_timezone_caches();
+
+    cctz::time_zone result;
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("etc/gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+}
+
+TEST(TimezoneUtilsTest, GMTAliasesWithOffsetsOnlyCache) {
+    TimezoneUtils::clear_timezone_caches();
+    TimezoneUtils::load_offsets_to_cache();
+
+    cctz::time_zone result;
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+}
+
+TEST(TimezoneUtilsTest, GMTAliasesWithFullCache) {
+    TimezoneUtils::load_timezones_to_cache();
+
+    cctz::time_zone result;
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+}
+
+TEST(TimezoneUtilsTest, EtcGMTMinus8Distinction) {
+    TimezoneUtils::load_timezones_to_cache();
+
+    cctz::time_zone result;
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
+    EXPECT_EQ(lookup_offset(result), 8 * 3600);
+
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT+8", result));
+    EXPECT_EQ(lookup_offset(result), -8 * 3600);
+}
+
+TEST(TimezoneUtilsTest, GMTFixedOffsetSeconds) {
+    TimezoneUtils::load_timezones_to_cache();
+
+    cctz::time_zone result;
+    int32_t offset_seconds = 0;
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+}
+
+TEST(TimezoneUtilsTest, IllegalFormatRegression) {
+    TimezoneUtils::clear_timezone_caches();
+
+    cctz::time_zone result;
+
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("UTC+", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("GMT+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+800", result));
+
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("UTC+", result));
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("GMT+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("+800", result));
+}
+
 } // namespace doris
