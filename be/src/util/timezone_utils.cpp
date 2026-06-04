@@ -180,7 +180,8 @@ bool TimezoneUtils::find_cctz_time_zone(const std::string& timezone, cctz::time_
 bool TimezoneUtils::try_get_fixed_offset_seconds(const cctz::time_zone& timezone,
                                                  int32_t* offset_seconds) {
     const std::string& timezone_name = timezone.name();
-    if (timezone_name == "UTC" || timezone_name == "Etc/UTC" || timezone_name == "Etc/GMT") {
+    if (timezone_name == "UTC" || timezone_name == "Etc/UTC" || timezone_name == "Etc/GMT" ||
+        timezone_name == "GMT" || timezone_name == "Zulu") {
         *offset_seconds = 0;
         return true;
     }

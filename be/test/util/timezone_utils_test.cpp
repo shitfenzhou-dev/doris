@@ -156,6 +156,62 @@ TEST(TimezoneUtilsTest, FindTimezone) {
     EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone(tzname, result));
 }
 
+TEST(TimezoneUtilsTest, FindTimezoneWithCacheStates) {
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+    cctz::time_zone result;
+
+    // 1. Empty cache direct parse
+    TimezoneUtils::clear_timezone_caches();
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("UTC", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Zulu", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT-06:30", result));
+    EXPECT_EQ(lookup_offset(result), -(6 * 3600 + 1800));
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("UTC+8", result));
+    EXPECT_EQ(lookup_offset(result), 8 * 3600);
+    
+    // Etc/GMT-8 should fail without tzdata cache
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
+
+    // 2. Offset-only loaded find
+    TimezoneUtils::clear_timezone_caches();
+    TimezoneUtils::load_offsets_to_cache();
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    // 3. Fully loaded timezone cache find
+    TimezoneUtils::clear_timezone_caches();
+    TimezoneUtils::load_timezones_to_cache();
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    // Difference between 'Etc/GMT' and 'Etc/GMT-8'
+    EXPECT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
+    EXPECT_EQ(lookup_offset(result), 8 * 3600); // POSIX sign inversion
+
+    // Invalid formats regression
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("UTC+", result));
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("GMT+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::find_cctz_time_zone("+800", result));
+}
+
 TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
     TimezoneUtils::load_timezones_to_cache();
 
