@@ -19,18 +19,11 @@ package org.apache.doris.qe;
 
 
 import org.apache.doris.common.DdlException;
-import org.apache.doris.common.ErrorCode;
-import org.apache.doris.common.ErrorReport;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 public class SqlModeHelper {
@@ -85,35 +78,9 @@ public class SqlModeHelper {
 
     public static final long MODE_COMBINE_MASK = (MODE_ANSI | MODE_TRADITIONAL);
 
-    private static final Map<String, Long> sqlModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
-
     private static final Map<String, Long> combineModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
 
     static {
-        sqlModeSet.put("DEFAULT", MODE_DEFAULT);
-        sqlModeSet.put("REAL_AS_FLOAT", MODE_REAL_AS_FLOAT);
-        sqlModeSet.put("PIPES_AS_CONCAT", MODE_PIPES_AS_CONCAT);
-        sqlModeSet.put("ANSI_QUOTES", MODE_ANSI_QUOTES);
-        sqlModeSet.put("IGNORE_SPACE", MODE_IGNORE_SPACE);
-        sqlModeSet.put("NOT_USED", MODE_NOT_USED);
-        sqlModeSet.put("ONLY_FULL_GROUP_BY", MODE_ONLY_FULL_GROUP_BY);
-        sqlModeSet.put("NO_UNSIGNED_SUBTRACTION", MODE_NO_UNSIGNED_SUBTRACTION);
-        sqlModeSet.put("NO_DIR_IN_CREATE", MODE_NO_DIR_IN_CREATE);
-        sqlModeSet.put("ANSI", MODE_ANSI);
-        sqlModeSet.put("NO_AUTO_VALUE_ON_ZERO", MODE_NO_AUTO_VALUE_ON_ZERO);
-        sqlModeSet.put("NO_BACKSLASH_ESCAPES", MODE_NO_BACKSLASH_ESCAPES);
-        sqlModeSet.put("STRICT_TRANS_TABLES", MODE_STRICT_TRANS_TABLES);
-        sqlModeSet.put("STRICT_ALL_TABLES", MODE_STRICT_ALL_TABLES);
-        sqlModeSet.put("NO_ZERO_IN_DATE", MODE_NO_ZERO_IN_DATE);
-        sqlModeSet.put("NO_ZERO_DATE", MODE_NO_ZERO_DATE);
-        sqlModeSet.put("INVALID_DATES", MODE_INVALID_DATES);
-        sqlModeSet.put("ERROR_FOR_DIVISION_BY_ZERO", MODE_ERROR_FOR_DIVISION_BY_ZERO);
-        sqlModeSet.put("TRADITIONAL", MODE_TRADITIONAL);
-        sqlModeSet.put("HIGH_NOT_PRECEDENCE", MODE_HIGH_NOT_PRECEDENCE);
-        sqlModeSet.put("NO_ENGINE_SUBSTITUTION", MODE_NO_ENGINE_SUBSTITUTION);
-        sqlModeSet.put("PAD_CHAR_TO_FULL_LENGTH", MODE_PAD_CHAR_TO_FULL_LENGTH);
-        sqlModeSet.put("TIME_TRUNCATE_FRACTIONAL", MODE_TIME_TRUNCATE_FRACTIONAL);
-
         combineModeSet.put("ANSI", (MODE_REAL_AS_FLOAT | MODE_PIPES_AS_CONCAT
                 | MODE_ANSI_QUOTES | MODE_IGNORE_SPACE | MODE_ONLY_FULL_GROUP_BY));
         combineModeSet.put("TRADITIONAL", (MODE_STRICT_TRANS_TABLES | MODE_STRICT_ALL_TABLES
@@ -121,79 +88,83 @@ public class SqlModeHelper {
                 | MODE_NO_ENGINE_SUBSTITUTION));
     }
 
+    private static final SessionVarFlagHelper ENCODER = new SessionVarFlagHelper(
+            SessionVariable.SQL_MODE, MODE_ALLOWED_MASK) {
+        {
+            registerFlag("DEFAULT", MODE_DEFAULT);
+            registerFlag("REAL_AS_FLOAT", MODE_REAL_AS_FLOAT);
+            registerFlag("PIPES_AS_CONCAT", MODE_PIPES_AS_CONCAT);
+            registerFlag("ANSI_QUOTES", MODE_ANSI_QUOTES);
+            registerFlag("IGNORE_SPACE", MODE_IGNORE_SPACE);
+            registerFlag("NOT_USED", MODE_NOT_USED);
+            registerFlag("ONLY_FULL_GROUP_BY", MODE_ONLY_FULL_GROUP_BY);
+            registerFlag("NO_UNSIGNED_SUBTRACTION", MODE_NO_UNSIGNED_SUBTRACTION);
+            registerFlag("NO_DIR_IN_CREATE", MODE_NO_DIR_IN_CREATE);
+            registerFlag("ANSI", MODE_ANSI);
+            registerFlag("NO_AUTO_VALUE_ON_ZERO", MODE_NO_AUTO_VALUE_ON_ZERO);
+            registerFlag("NO_BACKSLASH_ESCAPES", MODE_NO_BACKSLASH_ESCAPES);
+            registerFlag("STRICT_TRANS_TABLES", MODE_STRICT_TRANS_TABLES);
+            registerFlag("STRICT_ALL_TABLES", MODE_STRICT_ALL_TABLES);
+            registerFlag("NO_ZERO_IN_DATE", MODE_NO_ZERO_IN_DATE);
+            registerFlag("NO_ZERO_DATE", MODE_NO_ZERO_DATE);
+            registerFlag("INVALID_DATES", MODE_INVALID_DATES);
+            registerFlag("ERROR_FOR_DIVISION_BY_ZERO", MODE_ERROR_FOR_DIVISION_BY_ZERO);
+            registerFlag("TRADITIONAL", MODE_TRADITIONAL);
+            registerFlag("HIGH_NOT_PRECEDENCE", MODE_HIGH_NOT_PRECEDENCE);
+            registerFlag("NO_ENGINE_SUBSTITUTION", MODE_NO_ENGINE_SUBSTITUTION);
+            registerFlag("PAD_CHAR_TO_FULL_LENGTH", MODE_PAD_CHAR_TO_FULL_LENGTH);
+            registerFlag("TIME_TRUNCATE_FRACTIONAL", MODE_TIME_TRUNCATE_FRACTIONAL);
+        }
+
+        @Override
+        protected long getCodeFromString(String name) {
+            Long code = flagNameMap.get(name);
+            if (code == null) {
+                return 0L;
+            }
+            long result = code;
+            if (combineModeSet.containsKey(name)) {
+                result |= combineModeSet.get(name);
+            }
+            return result;
+        }
+
+        @Override
+        protected long expandNumeric(long value) throws DdlException {
+            for (String key : combineModeSet.keySet()) {
+                if ((value & flagNameMap.get(key)) != 0) {
+                    value |= combineModeSet.get(key);
+                }
+            }
+            return value;
+        }
+
+        @Override
+        protected boolean isSpecialZeroCase(long varValue) {
+            return varValue == MODE_DEFAULT;
+        }
+    };
+
+    private static final Map<String, Long> sqlModeSet = ENCODER.getFlagNameMap();
+
     // convert long type SQL MODE to string type that user can read
     public static String decode(Long sqlMode) throws DdlException {
-        if (sqlMode == MODE_DEFAULT) {
-            //For compatibility with older versions， return empty string
-            return "";
-        }
-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
-        }
-
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
-            if ((sqlMode & mode.getValue()) != 0) {
-                names.add(mode.getKey());
-            }
-        }
-
-        return Joiner.on(',').join(names);
+        return ENCODER.decode(sqlMode);
     }
 
     // convert string type SQL MODE to long type that session can store
     public static Long encode(String sqlMode) throws DdlException {
-        List<String> names =
-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
-
-        // empty string parse to 0
-        long resultCode = 0L;
-        for (String key : names) {
-            long code = 0L;
-            if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
-            } else {
-                code = getCodeFromString(key);
-                if (code == 0) {
-                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-                }
-            }
-            resultCode |= code;
-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-            }
-        }
-        return resultCode;
+        return ENCODER.encode(sqlMode);
     }
 
     // expand the combine mode if exists
     public static long expand(long sqlMode) throws DdlException {
-        for (String key : getCombineMode().keySet()) {
-            if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
-                sqlMode |= getCombineMode().get(key);
-            }
-        }
-        return sqlMode;
+        return ENCODER.expandNumeric(sqlMode);
     }
 
     // check if this SQL MODE is supported
     public static boolean isSupportedSqlMode(String sqlMode) {
-        if (sqlMode == null || !getSupportedSqlMode().containsKey(sqlMode)) {
-            return false;
-        }
-        return true;
-    }
-
-    // encode sqlMode from string to long
-    private static long getCodeFromString(String sqlMode) {
-        long code = 0L;
-        if (isSupportedSqlMode(sqlMode)) {
-            if (isCombineMode(sqlMode)) {
-                code |= getCombineMode().get(sqlMode);
-            }
-            code |= getSupportedSqlMode().get(sqlMode);
-        }
-        return code;
+        return ENCODER.isSupported(sqlMode);
     }
 
     // check if this SQL MODE is combine mode

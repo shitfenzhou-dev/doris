@@ -86,4 +86,68 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test
+    public void testCaseInsensitive() throws DdlException {
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("in"));
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("IN"));
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("In"));
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("bloom_filter"));
+        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode("BLOOM_FILTER"));
+    }
+
+    @Test
+    public void testNumericValue() throws DdlException {
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode("1"));
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("5"));
+        Assert.assertEquals(new Long(7L), RuntimeFilterTypeHelper.encode("1,6"));
+    }
+
+    @Test
+    public void testDecodeCombined() throws DdlException {
+        Assert.assertEquals("IN,MIN_MAX", RuntimeFilterTypeHelper.decode(5L));
+        Assert.assertEquals("MIN_MAX", RuntimeFilterTypeHelper.decode(4L));
+        Assert.assertEquals("BLOOM_FILTER,BITMAP_FILTER", RuntimeFilterTypeHelper.decode(18L));
+    }
+
+    @Test
+    public void testDecodeOrder() throws DdlException {
+        Assert.assertEquals("BLOOM_FILTER,MIN_MAX", RuntimeFilterTypeHelper.decode(6L));
+        Assert.assertEquals("BITMAP_FILTER,IN", RuntimeFilterTypeHelper.decode(17L));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidName() throws DdlException {
+        RuntimeFilterTypeHelper.encode("NON_EXISTENT");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidNumericMask() throws DdlException {
+        RuntimeFilterTypeHelper.encode("16");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testVeryLargeNumber() throws DdlException {
+        RuntimeFilterTypeHelper.encode("9999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testThreeMutualExclusive() throws DdlException {
+        RuntimeFilterTypeHelper.encode("IN,BLOOM_FILTER,IN_OR_BLOOM_FILTER");
+        Assert.fail("No exception throws");
+    }
+
+    @Test
+    public void testIsSupportedVarValue() {
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BLOOM_FILTER"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("MIN_MAX"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("IN_OR_BLOOM_FILTER"));
+        Assert.assertTrue(RuntimeFilterTypeHelper.isSupportedVarValue("BITMAP_FILTER"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue("NON_EXISTENT"));
+        Assert.assertFalse(RuntimeFilterTypeHelper.isSupportedVarValue(null));
+    }
 }
