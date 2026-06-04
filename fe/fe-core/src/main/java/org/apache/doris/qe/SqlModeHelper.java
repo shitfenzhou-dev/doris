@@ -19,18 +19,11 @@ package org.apache.doris.qe;
 
 
 import org.apache.doris.common.DdlException;
-import org.apache.doris.common.ErrorCode;
-import org.apache.doris.common.ErrorReport;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 public class SqlModeHelper {
@@ -123,82 +116,14 @@ public class SqlModeHelper {
 
     // convert long type SQL MODE to string type that user can read
     public static String decode(Long sqlMode) throws DdlException {
-        if (sqlMode == MODE_DEFAULT) {
-            //For compatibility with older versions， return empty string
-            return "";
-        }
-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
-        }
-
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
-            if ((sqlMode & mode.getValue()) != 0) {
-                names.add(mode.getKey());
-            }
-        }
-
-        return Joiner.on(',').join(names);
+        return VariableVarConverters.decodeBitFieldVar(SessionVariable.SQL_MODE, sqlMode,
+                MODE_ALLOWED_MASK, getSupportedSqlMode(), MODE_DEFAULT);
     }
 
     // convert string type SQL MODE to long type that session can store
     public static Long encode(String sqlMode) throws DdlException {
-        List<String> names =
-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
-
-        // empty string parse to 0
-        long resultCode = 0L;
-        for (String key : names) {
-            long code = 0L;
-            if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
-            } else {
-                code = getCodeFromString(key);
-                if (code == 0) {
-                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-                }
-            }
-            resultCode |= code;
-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
-            }
-        }
-        return resultCode;
-    }
-
-    // expand the combine mode if exists
-    public static long expand(long sqlMode) throws DdlException {
-        for (String key : getCombineMode().keySet()) {
-            if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
-                sqlMode |= getCombineMode().get(key);
-            }
-        }
-        return sqlMode;
-    }
-
-    // check if this SQL MODE is supported
-    public static boolean isSupportedSqlMode(String sqlMode) {
-        if (sqlMode == null || !getSupportedSqlMode().containsKey(sqlMode)) {
-            return false;
-        }
-        return true;
-    }
-
-    // encode sqlMode from string to long
-    private static long getCodeFromString(String sqlMode) {
-        long code = 0L;
-        if (isSupportedSqlMode(sqlMode)) {
-            if (isCombineMode(sqlMode)) {
-                code |= getCombineMode().get(sqlMode);
-            }
-            code |= getSupportedSqlMode().get(sqlMode);
-        }
-        return code;
-    }
-
-    // check if this SQL MODE is combine mode
-    public static boolean isCombineMode(String key) {
-        return combineModeSet.containsKey(key);
+        return VariableVarConverters.encodeBitFieldVar(SessionVariable.SQL_MODE, sqlMode,
+                MODE_ALLOWED_MASK, getSupportedSqlMode(), getCombineMode());
     }
 
     public static Map<String, Long> getSupportedSqlMode() {

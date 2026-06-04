@@ -42,6 +42,19 @@ public class SqlModeHelperTest {
         Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
     }
 
+    @Test
+    public void testCombineMode() throws DdlException {
+        // test ANSI which is combine mode
+        String sqlMode = "ANSI";
+        Long expectedAnsi = SqlModeHelper.MODE_REAL_AS_FLOAT | SqlModeHelper.MODE_PIPES_AS_CONCAT 
+                | SqlModeHelper.MODE_ANSI_QUOTES | SqlModeHelper.MODE_IGNORE_SPACE | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY;
+        Assert.assertEquals(new Long(expectedAnsi | SqlModeHelper.MODE_ANSI), SqlModeHelper.encode(sqlMode));
+
+        // combine numeric
+        sqlMode = String.valueOf(SqlModeHelper.MODE_ANSI);
+        Assert.assertEquals(new Long(expectedAnsi | SqlModeHelper.MODE_ANSI), SqlModeHelper.encode(sqlMode));
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
@@ -53,6 +66,12 @@ public class SqlModeHelperTest {
     public void testInvalidDecode() throws DdlException {
         long sqlMode = SqlModeHelper.MODE_LAST;
         SqlModeHelper.decode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOversizedNumber() throws DdlException {
+        SqlModeHelper.encode("999999999999999999999999999999999999");
         Assert.fail("No exception throws");
     }
 }

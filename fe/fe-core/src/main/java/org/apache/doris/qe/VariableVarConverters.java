@@ -18,10 +18,16 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.ErrorCode;
+import org.apache.doris.common.ErrorReport;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -68,6 +74,66 @@ public class VariableVarConverters {
             return converters.get(varName).decode(value);
         }
         return "";
+    }
+
+    // Shared methods for parsing bit field variables like sql_mode and runtime_filter_type
+    public static long encodeBitFieldVar(String varName, String varValue, long allowedMask,
+                                         Map<String, Long> supportedMap,
+                                         Map<String, Long> combineMap) throws DdlException {
+        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
+
+        long resultCode = 0L;
+        for (String key : names) {
+            long code = 0L;
+            if (StringUtils.isNumeric(key)) {
+                try {
+                    code = Long.parseLong(key);
+                    // expand numeric value if it is a combine mode
+                    if (combineMap != null) {
+                        for (Map.Entry<String, Long> entry : combineMap.entrySet()) {
+                            if ((code & supportedMap.get(entry.getKey())) != 0) {
+                                code |= entry.getValue();
+                            }
+                        }
+                    }
+                } catch (NumberFormatException e) {
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+                }
+            } else {
+                if (supportedMap.containsKey(key)) {
+                    code |= supportedMap.get(key);
+                    if (combineMap != null && combineMap.containsKey(key)) {
+                        code |= combineMap.get(key);
+                    }
+                } else {
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+                }
+            }
+            resultCode |= code;
+            if ((resultCode & ~allowedMask) != 0) {
+                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
+            }
+        }
+        return resultCode;
+    }
+
+    public static String decodeBitFieldVar(String varName, Long varValue, long allowedMask,
+                                           Map<String, Long> supportedMap, Long emptyValue) throws DdlException {
+        if (varValue.equals(emptyValue)) {
+            return "";
+        }
+        if ((varValue & ~allowedMask) != 0) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, varValue);
+        }
+
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, Long> value : supportedMap.entrySet()) {
+            if ((varValue & value.getValue()) != 0) {
+                names.add(value.getKey());
+            }
+        }
+
+        return Joiner.on(',').join(names);
     }
 
     /* Converters */

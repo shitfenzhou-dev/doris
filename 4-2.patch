@@ -1,0 +1,352 @@
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+index 4ce4dc68ff..4d16c0c1c4 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+@@ -22,15 +22,10 @@ import org.apache.doris.common.ErrorCode;
+ import org.apache.doris.common.ErrorReport;
+ import org.apache.doris.thrift.TRuntimeFilterType;
+ 
+-import com.google.common.base.Joiner;
+-import com.google.common.base.Splitter;
+ import com.google.common.collect.Maps;
+-import org.apache.commons.lang3.StringUtils;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+-import java.util.ArrayList;
+-import java.util.List;
+ import java.util.Map;
+ 
+ /**
+@@ -61,48 +56,14 @@ public class RuntimeFilterTypeHelper {
+ 
+     // convert long type variable value to string type that user can read
+     public static String decode(Long varValue) throws DdlException {
+-        // 0 parse to empty string
+-        if (varValue == 0) {
+-            return "";
+-        }
+-        if ((varValue & ~ALLOWED_MASK) != 0) {
+-            ErrorReport.reportDdlException(
+-                    ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, varValue);
+-        }
+-
+-        List<String> names = new ArrayList<String>();
+-        for (Map.Entry<String, Long> value : getSupportedVarValue().entrySet()) {
+-            if ((varValue & value.getValue()) != 0) {
+-                names.add(value.getKey());
+-            }
+-        }
+-
+-        return Joiner.on(',').join(names);
++        return VariableVarConverters.decodeBitFieldVar(SessionVariable.RUNTIME_FILTER_TYPE, varValue,
++                ALLOWED_MASK, getSupportedVarValue(), 0L);
+     }
+ 
+     // convert string type variable value to long type that session can store
+     public static Long encode(String varValue) throws DdlException {
+-        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
+-
+-        // empty string parse to 0
+-        long resultCode = 0;
+-        for (String key : names) {
+-            long code = 0;
+-            if (StringUtils.isNumeric(key)) {
+-                code |= Long.parseLong(key);
+-            } else {
+-                code = getCodeFromString(key);
+-                if (code == 0) {
+-                    ErrorReport.reportDdlException(
+-                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+-                }
+-            }
+-            resultCode |= code;
+-            if ((resultCode & ~ALLOWED_MASK) != 0) {
+-                ErrorReport.reportDdlException(
+-                        ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+-            }
+-        }
++        long resultCode = VariableVarConverters.encodeBitFieldVar(
++                SessionVariable.RUNTIME_FILTER_TYPE, varValue, ALLOWED_MASK, getSupportedVarValue(), null);
+ 
+         int count = 0;
+         if (allowedRuntimeFilterType(resultCode, TRuntimeFilterType.IN_OR_BLOOM)) {
+@@ -120,20 +81,6 @@ public class RuntimeFilterTypeHelper {
+         return resultCode;
+     }
+ 
+-    // check if this variable value is supported
+-    public static boolean isSupportedVarValue(String varValue) {
+-        return varValue != null && getSupportedVarValue().containsKey(varValue);
+-    }
+-
+-    // encode variable value from string to long
+-    private static long getCodeFromString(String varValue) {
+-        long code = 0;
+-        if (isSupportedVarValue(varValue)) {
+-            code |= getSupportedVarValue().get(varValue);
+-        }
+-        return code;
+-    }
+-
+     public static Map<String, Long> getSupportedVarValue() {
+         return varValueSet;
+     }
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+index 2b66297333..2a2a308a4d 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+@@ -19,18 +19,11 @@ package org.apache.doris.qe;
+ 
+ 
+ import org.apache.doris.common.DdlException;
+-import org.apache.doris.common.ErrorCode;
+-import org.apache.doris.common.ErrorReport;
+ 
+-import com.google.common.base.Joiner;
+-import com.google.common.base.Splitter;
+ import com.google.common.collect.Maps;
+-import org.apache.commons.lang3.StringUtils;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+-import java.util.ArrayList;
+-import java.util.List;
+ import java.util.Map;
+ 
+ public class SqlModeHelper {
+@@ -123,82 +116,14 @@ public class SqlModeHelper {
+ 
+     // convert long type SQL MODE to string type that user can read
+     public static String decode(Long sqlMode) throws DdlException {
+-        if (sqlMode == MODE_DEFAULT) {
+-            //For compatibility with older versions， return empty string
+-            return "";
+-        }
+-        if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
+-            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, sqlMode);
+-        }
+-
+-        List<String> names = new ArrayList<String>();
+-        for (Map.Entry<String, Long> mode : getSupportedSqlMode().entrySet()) {
+-            if ((sqlMode & mode.getValue()) != 0) {
+-                names.add(mode.getKey());
+-            }
+-        }
+-
+-        return Joiner.on(',').join(names);
++        return VariableVarConverters.decodeBitFieldVar(SessionVariable.SQL_MODE, sqlMode,
++                MODE_ALLOWED_MASK, getSupportedSqlMode(), MODE_DEFAULT);
+     }
+ 
+     // convert string type SQL MODE to long type that session can store
+     public static Long encode(String sqlMode) throws DdlException {
+-        List<String> names =
+-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
+-
+-        // empty string parse to 0
+-        long resultCode = 0L;
+-        for (String key : names) {
+-            long code = 0L;
+-            if (StringUtils.isNumeric(key)) {
+-                code |= expand(Long.valueOf(key));
+-            } else {
+-                code = getCodeFromString(key);
+-                if (code == 0) {
+-                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+-                }
+-            }
+-            resultCode |= code;
+-            if ((resultCode & ~MODE_ALLOWED_MASK) != 0) {
+-                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+-            }
+-        }
+-        return resultCode;
+-    }
+-
+-    // expand the combine mode if exists
+-    public static long expand(long sqlMode) throws DdlException {
+-        for (String key : getCombineMode().keySet()) {
+-            if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
+-                sqlMode |= getCombineMode().get(key);
+-            }
+-        }
+-        return sqlMode;
+-    }
+-
+-    // check if this SQL MODE is supported
+-    public static boolean isSupportedSqlMode(String sqlMode) {
+-        if (sqlMode == null || !getSupportedSqlMode().containsKey(sqlMode)) {
+-            return false;
+-        }
+-        return true;
+-    }
+-
+-    // encode sqlMode from string to long
+-    private static long getCodeFromString(String sqlMode) {
+-        long code = 0L;
+-        if (isSupportedSqlMode(sqlMode)) {
+-            if (isCombineMode(sqlMode)) {
+-                code |= getCombineMode().get(sqlMode);
+-            }
+-            code |= getSupportedSqlMode().get(sqlMode);
+-        }
+-        return code;
+-    }
+-
+-    // check if this SQL MODE is combine mode
+-    public static boolean isCombineMode(String key) {
+-        return combineModeSet.containsKey(key);
++        return VariableVarConverters.encodeBitFieldVar(SessionVariable.SQL_MODE, sqlMode,
++                MODE_ALLOWED_MASK, getSupportedSqlMode(), getCombineMode());
+     }
+ 
+     public static Map<String, Long> getSupportedSqlMode() {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+index 789e9933da..d73072a517 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+@@ -18,10 +18,16 @@
+ package org.apache.doris.qe;
+ 
+ import org.apache.doris.common.DdlException;
++import org.apache.doris.common.ErrorCode;
++import org.apache.doris.common.ErrorReport;
+ 
++import com.google.common.base.Joiner;
++import com.google.common.base.Splitter;
+ import com.google.common.collect.Maps;
+ import org.apache.commons.lang3.StringUtils;
+ 
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Map;
+ 
+ /**
+@@ -70,6 +76,66 @@ public class VariableVarConverters {
+         return "";
+     }
+ 
++    // Shared methods for parsing bit field variables like sql_mode and runtime_filter_type
++    public static long encodeBitFieldVar(String varName, String varValue, long allowedMask,
++                                         Map<String, Long> supportedMap,
++                                         Map<String, Long> combineMap) throws DdlException {
++        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
++
++        long resultCode = 0L;
++        for (String key : names) {
++            long code = 0L;
++            if (StringUtils.isNumeric(key)) {
++                try {
++                    code = Long.parseLong(key);
++                    // expand numeric value if it is a combine mode
++                    if (combineMap != null) {
++                        for (Map.Entry<String, Long> entry : combineMap.entrySet()) {
++                            if ((code & supportedMap.get(entry.getKey())) != 0) {
++                                code |= entry.getValue();
++                            }
++                        }
++                    }
++                } catch (NumberFormatException e) {
++                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
++                }
++            } else {
++                if (supportedMap.containsKey(key)) {
++                    code |= supportedMap.get(key);
++                    if (combineMap != null && combineMap.containsKey(key)) {
++                        code |= combineMap.get(key);
++                    }
++                } else {
++                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
++                }
++            }
++            resultCode |= code;
++            if ((resultCode & ~allowedMask) != 0) {
++                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, key);
++            }
++        }
++        return resultCode;
++    }
++
++    public static String decodeBitFieldVar(String varName, Long varValue, long allowedMask,
++                                           Map<String, Long> supportedMap, Long emptyValue) throws DdlException {
++        if (varValue.equals(emptyValue)) {
++            return "";
++        }
++        if ((varValue & ~allowedMask) != 0) {
++            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, varValue);
++        }
++
++        List<String> names = new ArrayList<>();
++        for (Map.Entry<String, Long> value : supportedMap.entrySet()) {
++            if ((varValue & value.getValue()) != 0) {
++                names.add(value.getKey());
++            }
++        }
++
++        return Joiner.on(',').join(names);
++    }
++
+     /* Converters */
+ 
+     // Converter to convert sql mode variable
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+index 4adb83ce6d..0e8d6339f6 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+@@ -50,6 +50,9 @@ public class RuntimeFilterTypeHelperTest {
+         runtimeFilterType = "MIN_MAX,IN_OR_BLOOM_FILTER";
+         Assert.assertEquals(new Long(12L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+ 
++        runtimeFilterType = "1, 4";
++        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
++
+         long runtimeFilterTypeValue = 0L;
+         Assert.assertEquals("", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
+ 
+@@ -86,4 +89,10 @@ public class RuntimeFilterTypeHelperTest {
+         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testOversizedNumber() throws DdlException {
++        RuntimeFilterTypeHelper.encode("999999999999999999999999999999999999");
++        Assert.fail("No exception throws");
++    }
+ }
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+index 96b9713844..81eb813920 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+@@ -42,6 +42,19 @@ public class SqlModeHelperTest {
+         Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
+     }
+ 
++    @Test
++    public void testCombineMode() throws DdlException {
++        // test ANSI which is combine mode
++        String sqlMode = "ANSI";
++        Long expectedAnsi = SqlModeHelper.MODE_REAL_AS_FLOAT | SqlModeHelper.MODE_PIPES_AS_CONCAT 
++                | SqlModeHelper.MODE_ANSI_QUOTES | SqlModeHelper.MODE_IGNORE_SPACE | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY;
++        Assert.assertEquals(new Long(expectedAnsi | SqlModeHelper.MODE_ANSI), SqlModeHelper.encode(sqlMode));
++
++        // combine numeric
++        sqlMode = String.valueOf(SqlModeHelper.MODE_ANSI);
++        Assert.assertEquals(new Long(expectedAnsi | SqlModeHelper.MODE_ANSI), SqlModeHelper.encode(sqlMode));
++    }
++
+     @Test(expected = DdlException.class)
+     public void testInvalidSqlMode() throws DdlException {
+         String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
+@@ -55,4 +68,10 @@ public class SqlModeHelperTest {
+         SqlModeHelper.decode(sqlMode);
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testOversizedNumber() throws DdlException {
++        SqlModeHelper.encode("999999999999999999999999999999999999");
++        Assert.fail("No exception throws");
++    }
+ }

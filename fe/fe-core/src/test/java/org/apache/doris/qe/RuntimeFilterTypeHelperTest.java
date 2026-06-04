@@ -50,6 +50,9 @@ public class RuntimeFilterTypeHelperTest {
         runtimeFilterType = "MIN_MAX,IN_OR_BLOOM_FILTER";
         Assert.assertEquals(new Long(12L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
+        runtimeFilterType = "1, 4";
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
         long runtimeFilterTypeValue = 0L;
         Assert.assertEquals("", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
 
@@ -84,6 +87,12 @@ public class RuntimeFilterTypeHelperTest {
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode4() throws DdlException {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOversizedNumber() throws DdlException {
+        RuntimeFilterTypeHelper.encode("999999999999999999999999999999999999");
         Assert.fail("No exception throws");
     }
 }
