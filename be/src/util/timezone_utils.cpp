@@ -247,7 +247,8 @@ static bool normalize_offset_string(const std::string& timezone, bool allow_hour
 
 bool TimezoneUtils::normalize_timezone_name(const std::string& timezone, std::string* normalized) {
     const std::string lower = to_lower_copy(timezone);
-    if (lower == "utc" || lower == "etc/utc" || lower == "zulu") {
+    if (lower == "utc" || lower == "etc/utc" || lower == "zulu" ||
+        lower == "gmt" || lower == "etc/gmt") {
         *normalized = "UTC";
         return true;
     }

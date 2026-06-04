@@ -82,12 +82,30 @@ TEST(TimezoneUtilsTest, ParseOffset) {
     EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("UTC", result));
     EXPECT_EQ(lookup_offset(result), 0);
 
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("gmt", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("Etc/GMT", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("Etc/UTC", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
+    EXPECT_TRUE(TimezoneUtils::parse_tz_offset_string("Zulu", result));
+    EXPECT_EQ(lookup_offset(result), 0);
+
     // out of range or illegal format
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+15:00", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("-13:00", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+800", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("0800", result));
     EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("UTC+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("UTC+", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("GMT+8:75", result));
+    EXPECT_FALSE(TimezoneUtils::parse_tz_offset_string("+800", result));
 }
 
 TEST(TimezoneUtilsTest, LoadOffsets) {
@@ -188,6 +206,69 @@ TEST(TimezoneUtilsTest, TryGetFixedOffsetSeconds) {
 
     ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Asia/Shanghai", result));
     EXPECT_FALSE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+}
+
+TEST(TimezoneUtilsTest, FindGMTZeroOffset) {
+    const auto tp = cctz::civil_second(2011, 1, 1, 0, 0, 0);
+    const auto lookup_offset = [&](const cctz::time_zone& tz) {
+        return tz.lookup(cctz::convert(tp, tz)).offset;
+    };
+    cctz::time_zone result;
+    int32_t offset_seconds = 0;
+
+    // Test 1: empty cache, direct parse
+    TimezoneUtils::clear_timezone_caches();
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("gmt", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("UTC", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    // Test 2: load offsets only, then find
+    TimezoneUtils::clear_timezone_caches();
+    TimezoneUtils::load_offsets_to_cache();
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    // Test 3: full timezone cache loaded
+    TimezoneUtils::clear_timezone_caches();
+    TimezoneUtils::load_timezones_to_cache();
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT", result));
+    EXPECT_EQ(0, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(0, offset_seconds);
+
+    // Test 4: Etc/GMT-8 (which is +08:00) vs Etc/GMT
+    ASSERT_TRUE(TimezoneUtils::find_cctz_time_zone("Etc/GMT-8", result));
+    EXPECT_EQ(8 * 3600, lookup_offset(result));
+    EXPECT_TRUE(TimezoneUtils::try_get_fixed_offset_seconds(result, &offset_seconds));
+    EXPECT_EQ(8 * 3600, offset_seconds);
 }
 
 } // namespace doris
