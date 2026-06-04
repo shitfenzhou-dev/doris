@@ -18,93 +18,85 @@
 #include "util/url_coding.h"
 
 #include <gtest/gtest.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#include <iostream>
+#include <sstream>
+#include <vector>
 
 namespace doris {
 
-// Tests encoding/decoding of input.  If expected_encoded is non-empty, the
-// encoded string is validated against it.
-void test_url(const string& input, const string& expected_encoded, bool hive_compat) {
-    std::string intermediate;
-    url_encode(input, &intermediate, hive_compat);
-    std::string output;
+TEST(UrlCodingTest, UrlDecodeValidPercentEncoding) {
+    std::string out;
 
-    if (!expected_encoded.empty()) {
-        EXPECT_EQ(intermediate, expected_encoded);
+    EXPECT_TRUE(url_decode("%2F", &out));
+    EXPECT_EQ("/", out);
+
+    EXPECT_TRUE(url_decode("%2f", &out));
+    EXPECT_EQ("/", out);
+
+    EXPECT_TRUE(url_decode("%20+", &out));
+    EXPECT_EQ("  ", out);
+
+    EXPECT_TRUE(url_decode("A%42%43", &out));
+    EXPECT_EQ("ABC", out);
+
+    EXPECT_TRUE(url_decode("hello%20world%21", &out));
+    EXPECT_EQ("hello world!", out);
+
+    EXPECT_TRUE(url_decode("%E4%B8%AD", &out));
+    EXPECT_EQ("中", out);
+
+    EXPECT_TRUE(url_decode("%E4%B8%AD%E6%96%87", &out));
+    EXPECT_EQ("中文", out);
+}
+
+TEST(UrlCodingTest, UrlDecodeRejectsInvalidPercentEncoding) {
+    const std::vector<std::string> invalid_inputs = {
+            "%", "%1", "%1G", "%G1", "%XX", "abc%2", "%2F%1G", "%2Fabc%ZZdef"};
+    std::string out;
+
+    for (const auto& input : invalid_inputs) {
+        out = "previous-success";
+        EXPECT_FALSE(url_decode(input, &out)) << input;
+        EXPECT_TRUE(out.empty()) << input;
     }
-
-    EXPECT_TRUE(UrlDecode(intermediate, &output, hive_compat));
-    EXPECT_EQ(input, output);
-
-    // Convert string to vector and try that also
-    std::vector<uint8_t> input_vector;
-    input_vector.resize(input.size());
-    memcpy(&input_vector[0], input.c_str(), input.size());
-    std::string intermediate2;
-    url_encode(input_vector, &intermediate2, hive_compat);
-    EXPECT_EQ(intermediate, intermediate2);
 }
 
-void test_base64(const string& input, const string& expected_encoded) {
-    std::string intermediate;
-    Base64Encode(input, &intermediate);
-    std::string output;
+TEST(UrlCodingTest, UrlDecodeEncodeRoundTrip) {
+    const std::string input = "path / 中文 + space";
+    std::string encoded;
+    std::string decoded;
 
-    if (!expected_encoded.empty()) {
-        EXPECT_EQ(intermediate, expected_encoded);
-    }
+    url_encode(input, &encoded);
+    EXPECT_EQ("path+%2F+%E4%B8%AD%E6%96%87+%2B+space", encoded);
 
-    EXPECT_TRUE(Base64Decode(intermediate, &output));
-    EXPECT_EQ(input, output);
-
-    // Convert string to vector and try that also
-    std::vector<uint8_t> input_vector;
-    input_vector.resize(input.size());
-    memcpy(&input_vector[0], input.c_str(), input.size());
-    std::string intermediate2;
-    Base64Encode(input_vector, &intermediate2);
-    EXPECT_EQ(intermediate, intermediate2);
-}
-
-// Test URL encoding. Check that the values that are put in are the
-// same that come out.
-TEST(UrlCodingTest, Basic) {
-    std::string input = "ABCDEFGHIJKLMNOPQRSTUWXYZ1234567890~!@#$%^&*()<>?,./:\";'{}|[]\\_+-=";
-    test_url(input, "", false);
-    test_url(input, "", true);
-}
-
-TEST(UrlCodingTest, HiveExceptions) {
-    test_url(" +", " +", true);
-}
-
-TEST(UrlCodingTest, BlankString) {
-    test_url("", "", false);
-    test_url("", "", true);
-}
-
-TEST(UrlCodingTest, PathSeparators) {
-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", false);
-    test_url("/home/doris/directory/", "%2Fhome%2Fdoris%2Fdirectory%2F", true);
+    EXPECT_TRUE(url_decode(encoded, &decoded));
+    EXPECT_EQ(input, decoded);
 }
 
 TEST(Base64Test, Basic) {
-    test_base64("a", "YQ==");
-    test_base64("ab", "YWI=");
-    test_base64("abc", "YWJj");
-    test_base64("abcd", "YWJjZA==");
-    test_base64("abcde", "YWJjZGU=");
-    test_base64("abcdef", "YWJjZGVm");
+    std::string encoded;
+    std::string decoded;
+
+    base64_encode("a", &encoded);
+    EXPECT_EQ("YQ==", encoded);
+    EXPECT_TRUE(base64_decode(encoded, &decoded));
+    EXPECT_EQ("a", decoded);
+
+    base64_encode("ab", &encoded);
+    EXPECT_EQ("YWI=", encoded);
+    EXPECT_TRUE(base64_decode(encoded, &decoded));
+    EXPECT_EQ("ab", decoded);
+
+    base64_encode("abc", &encoded);
+    EXPECT_EQ("YWJj", encoded);
+    EXPECT_TRUE(base64_decode(encoded, &decoded));
+    EXPECT_EQ("abc", decoded);
 }
 
 TEST(HtmlEscapingTest, Basic) {
-    std::string before = "<html><body>&amp";
-    std::stringstream after;
-    EscapeForHtml(before, &after);
-    EXPECT_EQ(after.str(), "&lt;html&gt;&lt;body&gt;&amp;amp");
+    std::stringstream out;
+    escape_for_html("<html><body>&amp", &out);
+    EXPECT_EQ("&lt;html&gt;&lt;body&gt;&amp;amp", out.str());
 }
 
 } // namespace doris

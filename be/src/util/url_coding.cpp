@@ -53,32 +53,49 @@ void url_encode(const std::string_view& in, std::string* out) {
 // http://www.boost.org/doc/libs/1_40_0/doc/html/boost_asio/
 //   example/http/server3/request_handler.cpp
 // See http://www.boost.org/LICENSE_1_0.txt for license for this method.
+namespace {
+
+bool is_hex_digit(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+uint8_t from_hex_digit(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    return c - 'A' + 10;
+}
+
+}
+
 bool url_decode(const std::string& in, std::string* out) {
     out->clear();
-    out->reserve(in.size());
+    std::string decoded;
+    decoded.reserve(in.size());
 
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] == '%') {
-            if (i + 3 <= in.size()) {
-                int value = 0;
-                std::istringstream is(in.substr(i + 1, 2));
-
-                if (is >> std::hex >> value) {
-                    (*out) += static_cast<char>(value);
-                    i += 2;
-                } else {
-                    return false;
-                }
-            } else {
+            if (i + 2 >= in.size()) {
                 return false;
             }
+            char high = in[i + 1];
+            char low = in[i + 2];
+            if (!is_hex_digit(high) || !is_hex_digit(low)) {
+                return false;
+            }
+            decoded += static_cast<char>((from_hex_digit(high) << 4) | from_hex_digit(low));
+            i += 2;
         } else if (in[i] == '+') {
-            (*out) += ' ';
+            decoded += ' ';
         } else {
-            (*out) += in[i];
+            decoded += in[i];
         }
     }
 
+    out->swap(decoded);
     return true;
 }
 
