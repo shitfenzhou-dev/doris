@@ -27,28 +27,28 @@ public class RuntimeFilterTypeHelperTest {
     @Test
     public void testNormal() throws DdlException {
         String runtimeFilterType = "";
-        Assert.assertEquals(new Long(0L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(0L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "IN";
-        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(1L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "BLOOM_FILTER";
-        Assert.assertEquals(new Long(2L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(2L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "MIN_MAX";
-        Assert.assertEquals(new Long(4L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(4L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "IN,MIN_MAX";
-        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "MIN_MAX, BLOOM_FILTER";
-        Assert.assertEquals(new Long(6L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(6L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "IN_OR_BLOOM_FILTER";
-        Assert.assertEquals(new Long(8L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(8L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         runtimeFilterType = "MIN_MAX,IN_OR_BLOOM_FILTER";
-        Assert.assertEquals(new Long(12L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+        Assert.assertEquals(Long.valueOf(12L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
         long runtimeFilterTypeValue = 0L;
         Assert.assertEquals("", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
@@ -57,33 +57,64 @@ public class RuntimeFilterTypeHelperTest {
         Assert.assertEquals("IN", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidSqlMode() throws DdlException {
-        RuntimeFilterTypeHelper.encode("BLOOM,IN");
-        Assert.fail("No exception throws");
+    @Test
+    public void testHelperAndConverterKeepLegalBehavior() throws DdlException {
+        Long minMaxCode = Long.valueOf(4L);
+        Assert.assertEquals(minMaxCode, RuntimeFilterTypeHelper.encode("MIN_MAX"));
+        Assert.assertEquals(minMaxCode, RuntimeFilterTypeHelper.encode("4"));
+        Assert.assertEquals(minMaxCode,
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "MIN_MAX"));
+        Assert.assertEquals(minMaxCode,
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "4"));
+
+        Long mixedCode = Long.valueOf(20L);
+        Assert.assertEquals(mixedCode, RuntimeFilterTypeHelper.encode("MIN_MAX,BITMAP_FILTER"));
+        Assert.assertEquals(mixedCode,
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "MIN_MAX,BITMAP_FILTER"));
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidDecode() throws DdlException {
-        RuntimeFilterTypeHelper.decode(32L);
-        Assert.fail("No exception throws");
+    @Test
+    public void testInvalidRuntimeFilterType() {
+        assertRuntimeFilterTypeEncodeFails("BLOOM,IN");
+        assertRuntimeFilterTypeEncodeFails("BLOOM_FILTER,IN");
+        assertRuntimeFilterTypeEncodeFails("BLOOM_FILTER,IN_OR_BLOOM_FILTER");
+        assertRuntimeFilterTypeEncodeFails("IN,IN_OR_BLOOM_FILTER");
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidSqlMode2() throws DdlException {
-        RuntimeFilterTypeHelper.encode("BLOOM_FILTER,IN");
-        Assert.fail("No exception throws");
+    @Test
+    public void testInvalidNumericRuntimeFilterType() {
+        assertRuntimeFilterTypeEncodeFails("9223372036854775808");
+        assertRuntimeFilterTypeEncodeFails("-1");
+        assertRuntimeFilterTypeEncodeFails("32");
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidSqlMode3() throws DdlException {
-        RuntimeFilterTypeHelper.encode("BLOOM_FILTER,IN_OR_BLOOM_FILTER");
-        Assert.fail("No exception throws");
+    @Test
+    public void testInvalidDecode() {
+        assertRuntimeFilterTypeDecodeFails(32L);
     }
 
-    @Test(expected = DdlException.class)
-    public void testInvalidSqlMode4() throws DdlException {
-        RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
-        Assert.fail("No exception throws");
+    private void assertRuntimeFilterTypeEncodeFails(String value) {
+        try {
+            RuntimeFilterTypeHelper.encode(value);
+            Assert.fail("No exception throws");
+        } catch (DdlException e) {
+        }
+        assertVariableEncodeFails(SessionVariable.RUNTIME_FILTER_TYPE, value);
+    }
+
+    private void assertRuntimeFilterTypeDecodeFails(long value) {
+        try {
+            RuntimeFilterTypeHelper.decode(value);
+            Assert.fail("No exception throws");
+        } catch (DdlException e) {
+        }
+    }
+
+    private void assertVariableEncodeFails(String variableName, String value) {
+        try {
+            VariableVarConverters.encode(variableName, value);
+            Assert.fail("No exception throws");
+        } catch (DdlException e) {
+        }
     }
 }

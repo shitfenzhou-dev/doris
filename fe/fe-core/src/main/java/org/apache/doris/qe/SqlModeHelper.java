@@ -17,7 +17,6 @@
 
 package org.apache.doris.qe;
 
-
 import org.apache.doris.common.DdlException;
 import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
@@ -25,22 +24,13 @@ import org.apache.doris.common.ErrorReport;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class SqlModeHelper {
-    private static final Logger LOG = LogManager.getLogger(SqlModeHelper.class);
 
-    // TODO(xuyang): these mode types are copy from MYSQL mode types, which are example
-    //  of how they works and to be compatible with MySQL, so for now they are not
-    //  really meaningful.
-    /* Bits for different SQL MODE modes, you can add custom SQL MODE here */
-    /* When a new session is created, its sql mode is set to MODE_DEFAULT */
     public static final long MODE_DEFAULT = 1L;
     public static final long MODE_PIPES_AS_CONCAT = 2L;
     public static final long MODE_ANSI_QUOTES = 4L;
@@ -53,8 +43,6 @@ public class SqlModeHelper {
     public static final long MODE_NO_BACKSLASH_ESCAPES = 1L << 20;
     public static final long MODE_STRICT_TRANS_TABLES = 1L << 21;
     public static final long MODE_STRICT_ALL_TABLES = 1L << 22;
-    // NO_ZERO_IN_DATE and NO_ZERO_DATE are removed in mysql 5.7 and merged into STRICT MODE.
-    // However, for backward compatibility during upgrade, these modes are kept.
     @Deprecated
     public static final long MODE_NO_ZERO_IN_DATE = 1L << 23;
     @Deprecated
@@ -66,13 +54,11 @@ public class SqlModeHelper {
     public static final long MODE_PAD_CHAR_TO_FULL_LENGTH = 1L << 31;
     public static final long MODE_TIME_TRUNCATE_FRACTIONAL = 1L << 32;
 
-    /* Bits for different COMBINE MODE modes, you can add custom COMBINE MODE here */
     public static final long MODE_ANSI = 1L << 18;
     public static final long MODE_TRADITIONAL = 1L << 27;
 
     public static final long MODE_LAST = 1L << 33;
     public static final long MODE_REAL_AS_FLOAT = 1L << 34;
-
 
     public static final long MODE_ALLOWED_MASK =
             (MODE_REAL_AS_FLOAT | MODE_PIPES_AS_CONCAT | MODE_ANSI_QUOTES | MODE_IGNORE_SPACE | MODE_NOT_USED
@@ -86,7 +72,6 @@ public class SqlModeHelper {
     public static final long MODE_COMBINE_MASK = (MODE_ANSI | MODE_TRADITIONAL);
 
     private static final Map<String, Long> sqlModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
-
     private static final Map<String, Long> combineModeSet = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
 
     static {
@@ -121,10 +106,8 @@ public class SqlModeHelper {
                 | MODE_NO_ENGINE_SUBSTITUTION));
     }
 
-    // convert long type SQL MODE to string type that user can read
     public static String decode(Long sqlMode) throws DdlException {
         if (sqlMode == MODE_DEFAULT) {
-            //For compatibility with older versions， return empty string
             return "";
         }
         if ((sqlMode & ~MODE_ALLOWED_MASK) != 0) {
@@ -141,17 +124,14 @@ public class SqlModeHelper {
         return Joiner.on(',').join(names);
     }
 
-    // convert string type SQL MODE to long type that session can store
     public static Long encode(String sqlMode) throws DdlException {
-        List<String> names =
-                Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
+        List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(sqlMode);
 
-        // empty string parse to 0
         long resultCode = 0L;
         for (String key : names) {
             long code = 0L;
-            if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
+            if (VariableVarConverters.hasLongFormat(key)) {
+                code |= expand(VariableVarConverters.parseNonNegativeLongForVar(key, SessionVariable.SQL_MODE));
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {
@@ -166,7 +146,6 @@ public class SqlModeHelper {
         return resultCode;
     }
 
-    // expand the combine mode if exists
     public static long expand(long sqlMode) throws DdlException {
         for (String key : getCombineMode().keySet()) {
             if ((sqlMode & getSupportedSqlMode().get(key)) != 0) {
@@ -176,7 +155,6 @@ public class SqlModeHelper {
         return sqlMode;
     }
 
-    // check if this SQL MODE is supported
     public static boolean isSupportedSqlMode(String sqlMode) {
         if (sqlMode == null || !getSupportedSqlMode().containsKey(sqlMode)) {
             return false;
@@ -184,7 +162,6 @@ public class SqlModeHelper {
         return true;
     }
 
-    // encode sqlMode from string to long
     private static long getCodeFromString(String sqlMode) {
         long code = 0L;
         if (isSupportedSqlMode(sqlMode)) {
@@ -196,7 +173,6 @@ public class SqlModeHelper {
         return code;
     }
 
-    // check if this SQL MODE is combine mode
     public static boolean isCombineMode(String key) {
         return combineModeSet.containsKey(key);
     }
@@ -232,5 +208,4 @@ public class SqlModeHelper {
         return ((sessionVariable.getSqlMode() & MODE_ALLOWED_MASK)
                 & MODE_ONLY_FULL_GROUP_BY) != 0;
     }
-
 }

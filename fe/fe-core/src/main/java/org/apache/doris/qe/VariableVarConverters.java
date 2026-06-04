@@ -18,11 +18,13 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.ErrorCode;
+import org.apache.doris.common.ErrorReport;
 
 import com.google.common.collect.Maps;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Helper class to drives the convert of session variables according to the converters.
@@ -40,6 +42,7 @@ import java.util.Map;
 public class VariableVarConverters {
 
     public static final Map<String, VariableVarConverterI> converters = Maps.newHashMap();
+    private static final Pattern LONG_PATTERN = Pattern.compile("-?\\d+");
 
     static {
         SqlModeConverter sqlModeConverter = new SqlModeConverter();
@@ -70,9 +73,45 @@ public class VariableVarConverters {
         return "";
     }
 
+    static boolean hasLongFormat(String value) {
+        return value != null && LONG_PATTERN.matcher(value).matches();
+    }
+
+    static long parseLong(String value, String errorMessage) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DdlException(errorMessage);
+        }
+    }
+
+    static long parseNonNegativeLong(String value, String errorMessage) throws DdlException {
+        long parsedValue = parseLong(value, errorMessage);
+        if (parsedValue < 0) {
+            throw new DdlException(errorMessage);
+        }
+        return parsedValue;
+    }
+
+    static long parseLongForVar(String value, String varName) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, value);
+            return 0L;
+        }
+    }
+
+    static long parseNonNegativeLongForVar(String value, String varName) throws DdlException {
+        long parsedValue = parseLongForVar(value, varName);
+        if (parsedValue < 0) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, value);
+        }
+        return parsedValue;
+    }
+
     /* Converters */
 
-    // Converter to convert sql mode variable
     public static class SqlModeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -85,7 +124,6 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert runtime filter type variable
     public static class RuntimeFilterTypeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -98,19 +136,13 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert sql select limit variable
     public static class SqlSelectLimitConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
             if (value.equalsIgnoreCase("DEFAULT")) {
                 return Long.MAX_VALUE;
-            } else {
-                try {
-                    return Long.parseLong(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException("Invalid sql_select_limit value: " + value);
-                }
             }
+            return parseLong(value, "Invalid sql_select_limit value: " + value);
         }
 
         @Override
@@ -122,8 +154,8 @@ public class VariableVarConverters {
     public static class ValidatePasswordPolicyConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
-            if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+            if (hasLongFormat(value)) {
+                long val = parseNonNegativeLong(value, "Invalid validate_password_policy value: " + value);
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);
