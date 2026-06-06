@@ -70,6 +70,14 @@ public class VariableVarConverters {
         return "";
     }
 
+    static long safeParseLong(String value, String varName) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DdlException("Invalid " + varName + " value: " + value);
+        }
+    }
+
     /* Converters */
 
     // Converter to convert sql mode variable
@@ -104,13 +112,8 @@ public class VariableVarConverters {
         public Long encode(String value) throws DdlException {
             if (value.equalsIgnoreCase("DEFAULT")) {
                 return Long.MAX_VALUE;
-            } else {
-                try {
-                    return Long.parseLong(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException("Invalid sql_select_limit value: " + value);
-                }
             }
+            return safeParseLong(value, "sql_select_limit");
         }
 
         @Override
@@ -123,7 +126,7 @@ public class VariableVarConverters {
         @Override
         public Long encode(String value) throws DdlException {
             if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+                long val = safeParseLong(value, "validate_password_policy");
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);

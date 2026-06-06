@@ -47,6 +47,9 @@ public class RuntimeFilterTypeHelperTest {
         runtimeFilterType = "IN_OR_BLOOM_FILTER";
         Assert.assertEquals(new Long(8L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
+        runtimeFilterType = "BITMAP_FILTER";
+        Assert.assertEquals(new Long(16L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
         runtimeFilterType = "MIN_MAX,IN_OR_BLOOM_FILTER";
         Assert.assertEquals(new Long(12L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
 
@@ -55,6 +58,21 @@ public class RuntimeFilterTypeHelperTest {
 
         runtimeFilterTypeValue = 1L;
         Assert.assertEquals("IN", RuntimeFilterTypeHelper.decode(runtimeFilterTypeValue));
+    }
+
+    @Test
+    public void testValidNumeric() throws DdlException {
+        String runtimeFilterType = "1";
+        Assert.assertEquals(new Long(1L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "0";
+        Assert.assertEquals(new Long(0L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "4";
+        Assert.assertEquals(new Long(4L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
+
+        runtimeFilterType = "1,4";
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode(runtimeFilterType));
     }
 
     @Test(expected = DdlException.class)
@@ -84,6 +102,30 @@ public class RuntimeFilterTypeHelperTest {
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode4() throws DdlException {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidEnum() throws DdlException {
+        RuntimeFilterTypeHelper.encode("WRONG_TYPE");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumeric() throws DdlException {
+        RuntimeFilterTypeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumeric() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-1");
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskNumeric() throws DdlException {
+        RuntimeFilterTypeHelper.encode("32");
         Assert.fail("No exception throws");
     }
 }

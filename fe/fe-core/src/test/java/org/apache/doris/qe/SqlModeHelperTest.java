@@ -42,6 +42,31 @@ public class SqlModeHelperTest {
         Assert.assertEquals("", SqlModeHelper.decode(sqlModeValue));
     }
 
+    @Test
+    public void testCombineMode() throws DdlException {
+        String sqlMode = "ANSI";
+        Assert.assertEquals(new Long(SqlModeHelper.MODE_ANSI
+                | SqlModeHelper.MODE_REAL_AS_FLOAT | SqlModeHelper.MODE_PIPES_AS_CONCAT
+                | SqlModeHelper.MODE_ANSI_QUOTES | SqlModeHelper.MODE_IGNORE_SPACE
+                | SqlModeHelper.MODE_ONLY_FULL_GROUP_BY), SqlModeHelper.encode(sqlMode));
+
+        sqlMode = "TRADITIONAL";
+        Assert.assertEquals(new Long(SqlModeHelper.MODE_TRADITIONAL
+                | SqlModeHelper.MODE_STRICT_TRANS_TABLES | SqlModeHelper.MODE_STRICT_ALL_TABLES
+                | SqlModeHelper.MODE_NO_ZERO_IN_DATE | SqlModeHelper.MODE_NO_ZERO_DATE
+                | SqlModeHelper.MODE_ERROR_FOR_DIVISION_BY_ZERO
+                | SqlModeHelper.MODE_NO_ENGINE_SUBSTITUTION), SqlModeHelper.encode(sqlMode));
+    }
+
+    @Test
+    public void testValidNumeric() throws DdlException {
+        String sqlMode = "2";
+        Assert.assertEquals(new Long(2L), SqlModeHelper.encode(sqlMode));
+
+        sqlMode = "0";
+        Assert.assertEquals(new Long(0L), SqlModeHelper.encode(sqlMode));
+    }
+
     @Test(expected = DdlException.class)
     public void testInvalidSqlMode() throws DdlException {
         String sqlMode = "PIPES_AS_CONCAT, WRONG_MODE";
@@ -53,6 +78,34 @@ public class SqlModeHelperTest {
     public void testInvalidDecode() throws DdlException {
         long sqlMode = SqlModeHelper.MODE_LAST;
         SqlModeHelper.decode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumeric() throws DdlException {
+        String sqlMode = "99999999999999999999";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumeric() throws DdlException {
+        String sqlMode = "-1";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskNumeric() throws DdlException {
+        String sqlMode = String.valueOf(SqlModeHelper.MODE_LAST);
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNonNumericString() throws DdlException {
+        String sqlMode = "abc";
+        SqlModeHelper.encode(sqlMode);
         Assert.fail("No exception throws");
     }
 }
