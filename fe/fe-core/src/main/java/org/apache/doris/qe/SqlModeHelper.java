@@ -151,7 +151,11 @@ public class SqlModeHelper {
         for (String key : names) {
             long code = 0L;
             if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
+                try {
+                    code |= expand(Long.valueOf(key));
+                } catch (NumberFormatException e) {
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
+                }
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {

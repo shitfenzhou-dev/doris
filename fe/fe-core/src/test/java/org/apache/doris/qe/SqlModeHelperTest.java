@@ -55,4 +55,28 @@ public class SqlModeHelperTest {
         SqlModeHelper.decode(sqlMode);
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testTooLargeNumber() throws DdlException {
+        // 测试超出 long 范围的数字
+        String sqlMode = "9999999999999999999999999999";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws for too large number");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidNumberFormat() throws DdlException {
+        // 测试无效的数字格式（这里虽然 StringUtils.isNumeric 可能返回 false，但我们仍需要测试边界情况）
+        String sqlMode = "123abc";
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws for invalid number format");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        // 测试非法的 mask
+        String sqlMode = "100000000000"; // 超出 MODE_ALLOWED_MASK 的值
+        SqlModeHelper.encode(sqlMode);
+        Assert.fail("No exception throws for invalid mask");
+    }
 }

@@ -89,7 +89,12 @@ public class RuntimeFilterTypeHelper {
         for (String key : names) {
             long code = 0;
             if (StringUtils.isNumeric(key)) {
-                code |= Long.parseLong(key);
+                try {
+                    code |= Long.parseLong(key);
+                } catch (NumberFormatException e) {
+                    ErrorReport.reportDdlException(
+                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
+                }
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {

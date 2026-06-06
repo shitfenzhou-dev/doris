@@ -86,4 +86,35 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testTooLargeNumber() throws DdlException {
+        // 测试超出 long 范围的数字
+        String runtimeFilterType = "9999999999999999999999999999";
+        RuntimeFilterTypeHelper.encode(runtimeFilterType);
+        Assert.fail("No exception throws for too large number");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidNumberFormat() throws DdlException {
+        // 测试无效的数字格式
+        String runtimeFilterType = "123abc";
+        RuntimeFilterTypeHelper.encode(runtimeFilterType);
+        Assert.fail("No exception throws for invalid number format");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        // 测试非法的 mask
+        String runtimeFilterType = "1000"; // 超出 ALLOWED_MASK 的值
+        RuntimeFilterTypeHelper.encode(runtimeFilterType);
+        Assert.fail("No exception throws for invalid mask");
+    }
+
+    @Test
+    public void testVariableVarConverterEntry() throws DdlException {
+        // 测试通过 VariableVarConverters 入口调用
+        Long result = VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "IN,MIN_MAX");
+        Assert.assertEquals(new Long(5L), result);
+    }
 }

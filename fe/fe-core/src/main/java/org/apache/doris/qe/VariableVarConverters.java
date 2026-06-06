@@ -41,6 +41,21 @@ public class VariableVarConverters {
 
     public static final Map<String, VariableVarConverterI> converters = Maps.newHashMap();
 
+    /**
+     * 安全解析数字字符串，将所有解析异常统一转换为 DdlException
+     * @param value 待解析的数字字符串
+     * @param varName 变量名称，用于错误信息
+     * @return 解析后的 long 值
+     * @throws DdlException 当解析失败时抛出
+     */
+    public static long parseLongSafe(String value, String varName) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DdlException("Invalid " + varName + " value: " + value);
+        }
+    }
+
     static {
         SqlModeConverter sqlModeConverter = new SqlModeConverter();
         converters.put(SessionVariable.SQL_MODE, sqlModeConverter);
@@ -122,19 +137,21 @@ public class VariableVarConverters {
     public static class ValidatePasswordPolicyConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
-            if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
-                if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
-                        && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
-                    throw new DdlException("Invalid validate_password_policy value: " + value);
-                }
-                return val;
-            } else if (value.equalsIgnoreCase("NONE")) {
+            if (value.equalsIgnoreCase("NONE")) {
                 return 0L;
             } else if (value.equalsIgnoreCase("STRONG")) {
                 return 2L;
             } else {
-                throw new DdlException("Invalid validate_password_policy value: " + value);
+                try {
+                    long val = Long.parseLong(value);
+                    if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
+                            && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
+                        throw new DdlException("Invalid validate_password_policy value: " + value);
+                    }
+                    return val;
+                } catch (NumberFormatException e) {
+                    throw new DdlException("Invalid validate_password_policy value: " + value);
+                }
             }
         }
 

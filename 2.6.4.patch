@@ -1,0 +1,165 @@
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+index 4ce4dc68ff..e6d36e0ea8 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+@@ -89,7 +89,12 @@ public class RuntimeFilterTypeHelper {
+         for (String key : names) {
+             long code = 0;
+             if (StringUtils.isNumeric(key)) {
+-                code |= Long.parseLong(key);
++                try {
++                    code |= Long.parseLong(key);
++                } catch (NumberFormatException e) {
++                    ErrorReport.reportDdlException(
++                            ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.RUNTIME_FILTER_TYPE, key);
++                }
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+index 2b66297333..2cad03f6e5 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+@@ -151,7 +151,11 @@ public class SqlModeHelper {
+         for (String key : names) {
+             long code = 0L;
+             if (StringUtils.isNumeric(key)) {
+-                code |= expand(Long.valueOf(key));
++                try {
++                    code |= expand(Long.valueOf(key));
++                } catch (NumberFormatException e) {
++                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, SessionVariable.SQL_MODE, key);
++                }
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+index 789e9933da..fd5e9a413c 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+@@ -41,6 +41,21 @@ public class VariableVarConverters {
+ 
+     public static final Map<String, VariableVarConverterI> converters = Maps.newHashMap();
+ 
++    /**
++     * 安全解析数字字符串，将所有解析异常统一转换为 DdlException
++     * @param value 待解析的数字字符串
++     * @param varName 变量名称，用于错误信息
++     * @return 解析后的 long 值
++     * @throws DdlException 当解析失败时抛出
++     */
++    public static long parseLongSafe(String value, String varName) throws DdlException {
++        try {
++            return Long.parseLong(value);
++        } catch (NumberFormatException e) {
++            throw new DdlException("Invalid " + varName + " value: " + value);
++        }
++    }
++
+     static {
+         SqlModeConverter sqlModeConverter = new SqlModeConverter();
+         converters.put(SessionVariable.SQL_MODE, sqlModeConverter);
+@@ -122,19 +137,21 @@ public class VariableVarConverters {
+     public static class ValidatePasswordPolicyConverter implements VariableVarConverterI {
+         @Override
+         public Long encode(String value) throws DdlException {
+-            if (StringUtils.isNumeric(value)) {
+-                long val = Long.valueOf(value);
+-                if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
+-                        && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
+-                    throw new DdlException("Invalid validate_password_policy value: " + value);
+-                }
+-                return val;
+-            } else if (value.equalsIgnoreCase("NONE")) {
++            if (value.equalsIgnoreCase("NONE")) {
+                 return 0L;
+             } else if (value.equalsIgnoreCase("STRONG")) {
+                 return 2L;
+             } else {
+-                throw new DdlException("Invalid validate_password_policy value: " + value);
++                try {
++                    long val = Long.parseLong(value);
++                    if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
++                            && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
++                        throw new DdlException("Invalid validate_password_policy value: " + value);
++                    }
++                    return val;
++                } catch (NumberFormatException e) {
++                    throw new DdlException("Invalid validate_password_policy value: " + value);
++                }
+             }
+         }
+ 
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+index 4adb83ce6d..45d8a60406 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+@@ -86,4 +86,35 @@ public class RuntimeFilterTypeHelperTest {
+         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testTooLargeNumber() throws DdlException {
++        // 测试超出 long 范围的数字
++        String runtimeFilterType = "9999999999999999999999999999";
++        RuntimeFilterTypeHelper.encode(runtimeFilterType);
++        Assert.fail("No exception throws for too large number");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidNumberFormat() throws DdlException {
++        // 测试无效的数字格式
++        String runtimeFilterType = "123abc";
++        RuntimeFilterTypeHelper.encode(runtimeFilterType);
++        Assert.fail("No exception throws for invalid number format");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMask() throws DdlException {
++        // 测试非法的 mask
++        String runtimeFilterType = "1000"; // 超出 ALLOWED_MASK 的值
++        RuntimeFilterTypeHelper.encode(runtimeFilterType);
++        Assert.fail("No exception throws for invalid mask");
++    }
++
++    @Test
++    public void testVariableVarConverterEntry() throws DdlException {
++        // 测试通过 VariableVarConverters 入口调用
++        Long result = VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "IN,MIN_MAX");
++        Assert.assertEquals(new Long(5L), result);
++    }
+ }
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+index 96b9713844..a0099d3d1f 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+@@ -55,4 +55,28 @@ public class SqlModeHelperTest {
+         SqlModeHelper.decode(sqlMode);
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testTooLargeNumber() throws DdlException {
++        // 测试超出 long 范围的数字
++        String sqlMode = "9999999999999999999999999999";
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws for too large number");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidNumberFormat() throws DdlException {
++        // 测试无效的数字格式（这里虽然 StringUtils.isNumeric 可能返回 false，但我们仍需要测试边界情况）
++        String sqlMode = "123abc";
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws for invalid number format");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMask() throws DdlException {
++        // 测试非法的 mask
++        String sqlMode = "100000000000"; // 超出 MODE_ALLOWED_MASK 的值
++        SqlModeHelper.encode(sqlMode);
++        Assert.fail("No exception throws for invalid mask");
++    }
+ }
