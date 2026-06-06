@@ -50,6 +50,22 @@ public class SqlModeHelperTest {
     }
 
     @Test(expected = DdlException.class)
+    public void testHugeNumber() throws DdlException {
+        SqlModeHelper.encode("99999999999999999999999999999");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumber() throws DdlException {
+        SqlModeHelper.encode("-1");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        // e.g. 1L << 60 which is not in MODE_ALLOWED_MASK
+        SqlModeHelper.encode("1152921504606846976");
+    }
+
+    @Test(expected = DdlException.class)
     public void testInvalidDecode() throws DdlException {
         long sqlMode = SqlModeHelper.MODE_LAST;
         SqlModeHelper.decode(sqlMode);

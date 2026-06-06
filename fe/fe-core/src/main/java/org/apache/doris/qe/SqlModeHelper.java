@@ -150,8 +150,8 @@ public class SqlModeHelper {
         long resultCode = 0L;
         for (String key : names) {
             long code = 0L;
-            if (StringUtils.isNumeric(key)) {
-                code |= expand(Long.valueOf(key));
+            if (VariableVarConverters.isNumericString(key)) {
+                code |= expand(VariableVarConverters.parseSafeLong(key, SessionVariable.SQL_MODE));
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {

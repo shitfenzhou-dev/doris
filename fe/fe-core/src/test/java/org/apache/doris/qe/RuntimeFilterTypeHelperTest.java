@@ -64,6 +64,21 @@ public class RuntimeFilterTypeHelperTest {
     }
 
     @Test(expected = DdlException.class)
+    public void testHugeNumber() throws DdlException {
+        RuntimeFilterTypeHelper.encode("99999999999999999999999999999");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumber() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-1");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMask() throws DdlException {
+        RuntimeFilterTypeHelper.encode("32");
+    }
+
+    @Test(expected = DdlException.class)
     public void testInvalidDecode() throws DdlException {
         RuntimeFilterTypeHelper.decode(32L);
         Assert.fail("No exception throws");

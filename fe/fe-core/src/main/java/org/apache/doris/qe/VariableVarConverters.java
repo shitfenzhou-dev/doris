@@ -18,6 +18,8 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.ErrorCode;
+import org.apache.doris.common.ErrorReport;
 
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
@@ -70,6 +72,23 @@ public class VariableVarConverters {
         return "";
     }
 
+    // Helper to safely parse a long value for session variables, returning DdlException on overflow or invalid format.
+    public static boolean isNumericString(String value) {
+        if (StringUtils.isEmpty(value)) {
+            return false;
+        }
+        return value.matches("-?\\d+");
+    }
+
+    public static long parseSafeLong(String value, String varName) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, varName, value);
+            return 0L; // Unreachable
+        }
+    }
+
     /* Converters */
 
     // Converter to convert sql mode variable
@@ -105,11 +124,7 @@ public class VariableVarConverters {
             if (value.equalsIgnoreCase("DEFAULT")) {
                 return Long.MAX_VALUE;
             } else {
-                try {
-                    return Long.parseLong(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException("Invalid sql_select_limit value: " + value);
-                }
+                return parseSafeLong(value, SessionVariable.SQL_SELECT_LIMIT);
             }
         }
 
@@ -122,11 +137,11 @@ public class VariableVarConverters {
     public static class ValidatePasswordPolicyConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
-            if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+            if (isNumericString(value)) {
+                long val = parseSafeLong(value, GlobalVariable.VALIDATE_PASSWORD_POLICY);
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
-                    throw new DdlException("Invalid validate_password_policy value: " + value);
+                    ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, GlobalVariable.VALIDATE_PASSWORD_POLICY, value);
                 }
                 return val;
             } else if (value.equalsIgnoreCase("NONE")) {
@@ -134,7 +149,8 @@ public class VariableVarConverters {
             } else if (value.equalsIgnoreCase("STRONG")) {
                 return 2L;
             } else {
-                throw new DdlException("Invalid validate_password_policy value: " + value);
+                ErrorReport.reportDdlException(ErrorCode.ERR_WRONG_VALUE_FOR_VAR, GlobalVariable.VALIDATE_PASSWORD_POLICY, value);
+                return 0L; // Unreachable
             }
         }
 
