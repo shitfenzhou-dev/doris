@@ -52,6 +52,14 @@ public class VariableVarConverters {
         converters.put(SessionVariable.SQL_SELECT_LIMIT, sqlSelectLimitConverter);
     }
 
+    public static long safeParseLong(String value, String errorMsgPrefix) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DdlException(errorMsgPrefix + value);
+        }
+    }
+
     public static Boolean hasConverter(String varName) {
         return converters.containsKey(varName);
     }
@@ -105,11 +113,7 @@ public class VariableVarConverters {
             if (value.equalsIgnoreCase("DEFAULT")) {
                 return Long.MAX_VALUE;
             } else {
-                try {
-                    return Long.parseLong(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException("Invalid sql_select_limit value: " + value);
-                }
+                return safeParseLong(value, "Invalid sql_select_limit value: ");
             }
         }
 
@@ -123,7 +127,7 @@ public class VariableVarConverters {
         @Override
         public Long encode(String value) throws DdlException {
             if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+                long val = safeParseLong(value, "Invalid validate_password_policy value: ");
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);

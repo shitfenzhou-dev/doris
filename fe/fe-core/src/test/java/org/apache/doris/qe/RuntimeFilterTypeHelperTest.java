@@ -86,4 +86,51 @@ public class RuntimeFilterTypeHelperTest {
         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws for overflow numeric");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "99999999999999999999");
+        Assert.fail("No exception throws for overflow numeric");
+    }
+
+    @Test
+    public void testValidNumericViaHelper() throws DdlException {
+        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("1,4"));
+    }
+
+    @Test
+    public void testValidNumericViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(5L),
+                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "1,4"));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidEnumViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("INVALID_TYPE");
+        Assert.fail("No exception throws for invalid enum");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidEnumViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "INVALID_TYPE");
+        Assert.fail("No exception throws for invalid enum");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaHelper() throws DdlException {
+        RuntimeFilterTypeHelper.encode("-1");
+        Assert.fail("No exception throws for negative numeric");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "-1");
+        Assert.fail("No exception throws for negative numeric");
+    }
 }

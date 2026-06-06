@@ -55,4 +55,52 @@ public class SqlModeHelperTest {
         SqlModeHelper.decode(sqlMode);
         Assert.fail("No exception throws");
     }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaHelper() throws DdlException {
+        SqlModeHelper.encode("99999999999999999999");
+        Assert.fail("No exception throws for overflow numeric");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testOverflowNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.SQL_MODE, "99999999999999999999");
+        Assert.fail("No exception throws for overflow numeric");
+    }
+
+    @Test
+    public void testValidNumericViaHelper() throws DdlException {
+        Assert.assertEquals(new Long(3L), SqlModeHelper.encode("1,2"));
+    }
+
+    @Test
+    public void testValidNumericViaConverter() throws DdlException {
+        Assert.assertEquals(new Long(3L),
+                VariableVarConverters.encode(SessionVariable.SQL_MODE, "1,2"));
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaHelper() throws DdlException {
+        SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_LAST));
+        Assert.fail("No exception throws for invalid mask");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testInvalidMaskViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.SQL_MODE,
+                String.valueOf(SqlModeHelper.MODE_LAST));
+        Assert.fail("No exception throws for invalid mask");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaHelper() throws DdlException {
+        SqlModeHelper.encode("-1");
+        Assert.fail("No exception throws for negative numeric");
+    }
+
+    @Test(expected = DdlException.class)
+    public void testNegativeNumericViaConverter() throws DdlException {
+        VariableVarConverters.encode(SessionVariable.SQL_MODE, "-1");
+        Assert.fail("No exception throws for negative numeric");
+    }
 }

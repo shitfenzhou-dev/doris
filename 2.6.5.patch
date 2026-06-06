@@ -1,0 +1,182 @@
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+index 4ce4dc68ff..c986f850ff 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/RuntimeFilterTypeHelper.java
+@@ -89,7 +89,8 @@ public class RuntimeFilterTypeHelper {
+         for (String key : names) {
+             long code = 0;
+             if (StringUtils.isNumeric(key)) {
+-                code |= Long.parseLong(key);
++                code |= VariableVarConverters.safeParseLong(key,
++                        "Invalid value for variable '" + SessionVariable.RUNTIME_FILTER_TYPE + "': ");
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+index 2b66297333..581a2d13a3 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/SqlModeHelper.java
+@@ -151,7 +151,8 @@ public class SqlModeHelper {
+         for (String key : names) {
+             long code = 0L;
+             if (StringUtils.isNumeric(key)) {
+-                code |= expand(Long.valueOf(key));
++                code |= expand(VariableVarConverters.safeParseLong(key,
++                        "Invalid value for variable '" + SessionVariable.SQL_MODE + "': "));
+             } else {
+                 code = getCodeFromString(key);
+                 if (code == 0) {
+diff --git a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+index 789e9933da..2db0382b20 100644
+--- a/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
++++ b/fe/fe-core/src/main/java/org/apache/doris/qe/VariableVarConverters.java
+@@ -52,6 +52,14 @@ public class VariableVarConverters {
+         converters.put(SessionVariable.SQL_SELECT_LIMIT, sqlSelectLimitConverter);
+     }
+ 
++    public static long safeParseLong(String value, String errorMsgPrefix) throws DdlException {
++        try {
++            return Long.parseLong(value);
++        } catch (NumberFormatException e) {
++            throw new DdlException(errorMsgPrefix + value);
++        }
++    }
++
+     public static Boolean hasConverter(String varName) {
+         return converters.containsKey(varName);
+     }
+@@ -105,11 +113,7 @@ public class VariableVarConverters {
+             if (value.equalsIgnoreCase("DEFAULT")) {
+                 return Long.MAX_VALUE;
+             } else {
+-                try {
+-                    return Long.parseLong(value);
+-                } catch (NumberFormatException e) {
+-                    throw new DdlException("Invalid sql_select_limit value: " + value);
+-                }
++                return safeParseLong(value, "Invalid sql_select_limit value: ");
+             }
+         }
+ 
+@@ -123,7 +127,7 @@ public class VariableVarConverters {
+         @Override
+         public Long encode(String value) throws DdlException {
+             if (StringUtils.isNumeric(value)) {
+-                long val = Long.valueOf(value);
++                long val = safeParseLong(value, "Invalid validate_password_policy value: ");
+                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
+                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
+                     throw new DdlException("Invalid validate_password_policy value: " + value);
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+index 4adb83ce6d..b4715a4081 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/RuntimeFilterTypeHelperTest.java
+@@ -86,4 +86,51 @@ public class RuntimeFilterTypeHelperTest {
+         RuntimeFilterTypeHelper.encode("IN,IN_OR_BLOOM_FILTER");
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testOverflowNumericViaHelper() throws DdlException {
++        RuntimeFilterTypeHelper.encode("99999999999999999999");
++        Assert.fail("No exception throws for overflow numeric");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testOverflowNumericViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "99999999999999999999");
++        Assert.fail("No exception throws for overflow numeric");
++    }
++
++    @Test
++    public void testValidNumericViaHelper() throws DdlException {
++        Assert.assertEquals(new Long(5L), RuntimeFilterTypeHelper.encode("1,4"));
++    }
++
++    @Test
++    public void testValidNumericViaConverter() throws DdlException {
++        Assert.assertEquals(new Long(5L),
++                VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "1,4"));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidEnumViaHelper() throws DdlException {
++        RuntimeFilterTypeHelper.encode("INVALID_TYPE");
++        Assert.fail("No exception throws for invalid enum");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidEnumViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "INVALID_TYPE");
++        Assert.fail("No exception throws for invalid enum");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumericViaHelper() throws DdlException {
++        RuntimeFilterTypeHelper.encode("-1");
++        Assert.fail("No exception throws for negative numeric");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumericViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.RUNTIME_FILTER_TYPE, "-1");
++        Assert.fail("No exception throws for negative numeric");
++    }
+ }
+diff --git a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+index 96b9713844..66a53304d5 100644
+--- a/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
++++ b/fe/fe-core/src/test/java/org/apache/doris/qe/SqlModeHelperTest.java
+@@ -55,4 +55,52 @@ public class SqlModeHelperTest {
+         SqlModeHelper.decode(sqlMode);
+         Assert.fail("No exception throws");
+     }
++
++    @Test(expected = DdlException.class)
++    public void testOverflowNumericViaHelper() throws DdlException {
++        SqlModeHelper.encode("99999999999999999999");
++        Assert.fail("No exception throws for overflow numeric");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testOverflowNumericViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.SQL_MODE, "99999999999999999999");
++        Assert.fail("No exception throws for overflow numeric");
++    }
++
++    @Test
++    public void testValidNumericViaHelper() throws DdlException {
++        Assert.assertEquals(new Long(3L), SqlModeHelper.encode("1,2"));
++    }
++
++    @Test
++    public void testValidNumericViaConverter() throws DdlException {
++        Assert.assertEquals(new Long(3L),
++                VariableVarConverters.encode(SessionVariable.SQL_MODE, "1,2"));
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMaskViaHelper() throws DdlException {
++        SqlModeHelper.encode(String.valueOf(SqlModeHelper.MODE_LAST));
++        Assert.fail("No exception throws for invalid mask");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testInvalidMaskViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.SQL_MODE,
++                String.valueOf(SqlModeHelper.MODE_LAST));
++        Assert.fail("No exception throws for invalid mask");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumericViaHelper() throws DdlException {
++        SqlModeHelper.encode("-1");
++        Assert.fail("No exception throws for negative numeric");
++    }
++
++    @Test(expected = DdlException.class)
++    public void testNegativeNumericViaConverter() throws DdlException {
++        VariableVarConverters.encode(SessionVariable.SQL_MODE, "-1");
++        Assert.fail("No exception throws for negative numeric");
++    }
+ }
