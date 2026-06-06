@@ -33,9 +33,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Used for encoding and decoding of session variable runtime_filter_type
- */
 public class RuntimeFilterTypeHelper {
     private static final Logger LOG = LogManager.getLogger(RuntimeFilterTypeHelper.class);
 
@@ -59,9 +56,7 @@ public class RuntimeFilterTypeHelper {
         return (runtimeFilterType & type.getValue()) != 0;
     }
 
-    // convert long type variable value to string type that user can read
     public static String decode(Long varValue) throws DdlException {
-        // 0 parse to empty string
         if (varValue == 0) {
             return "";
         }
@@ -80,16 +75,14 @@ public class RuntimeFilterTypeHelper {
         return Joiner.on(',').join(names);
     }
 
-    // convert string type variable value to long type that session can store
     public static Long encode(String varValue) throws DdlException {
         List<String> names = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(varValue);
 
-        // empty string parse to 0
         long resultCode = 0;
         for (String key : names) {
             long code = 0;
             if (StringUtils.isNumeric(key)) {
-                code |= Long.parseLong(key);
+                code |= VariableVarConverters.parseLongValue(SessionVariable.RUNTIME_FILTER_TYPE, key);
             } else {
                 code = getCodeFromString(key);
                 if (code == 0) {
@@ -120,12 +113,10 @@ public class RuntimeFilterTypeHelper {
         return resultCode;
     }
 
-    // check if this variable value is supported
     public static boolean isSupportedVarValue(String varValue) {
         return varValue != null && getSupportedVarValue().containsKey(varValue);
     }
 
-    // encode variable value from string to long
     private static long getCodeFromString(String varValue) {
         long code = 0;
         if (isSupportedVarValue(varValue)) {

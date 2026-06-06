@@ -70,9 +70,16 @@ public class VariableVarConverters {
         return "";
     }
 
+    static long parseLongValue(String varName, String value) throws DdlException {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DdlException("Invalid " + varName + " value: " + value);
+        }
+    }
+
     /* Converters */
 
-    // Converter to convert sql mode variable
     public static class SqlModeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -85,7 +92,6 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert runtime filter type variable
     public static class RuntimeFilterTypeConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
@@ -98,19 +104,13 @@ public class VariableVarConverters {
         }
     }
 
-    // Converter to convert sql select limit variable
     public static class SqlSelectLimitConverter implements VariableVarConverterI {
         @Override
         public Long encode(String value) throws DdlException {
             if (value.equalsIgnoreCase("DEFAULT")) {
                 return Long.MAX_VALUE;
-            } else {
-                try {
-                    return Long.parseLong(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException("Invalid sql_select_limit value: " + value);
-                }
             }
+            return parseLongValue(SessionVariable.SQL_SELECT_LIMIT, value);
         }
 
         @Override
@@ -123,7 +123,7 @@ public class VariableVarConverters {
         @Override
         public Long encode(String value) throws DdlException {
             if (StringUtils.isNumeric(value)) {
-                long val = Long.valueOf(value);
+                long val = parseLongValue(GlobalVariable.VALIDATE_PASSWORD_POLICY, value);
                 if (val != GlobalVariable.VALIDATE_PASSWORD_POLICY_DISABLED
                         && val != GlobalVariable.VALIDATE_PASSWORD_POLICY_STRONG) {
                     throw new DdlException("Invalid validate_password_policy value: " + value);
